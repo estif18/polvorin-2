@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Ingreso - Sistema de Polvorín</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-plus"></i> Nuevo Ingreso de Explosivos</h1>
+            <a href="{{ url_for('index') }}" class="btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
+            </a>
+        </header>
+
+        <form id="ingresoForm" class="form-card" method="POST">
+            <!-- Información general del ingreso -->
+            <div class="salida-header">
+                <h3><i class="fas fa-info-circle"></i> Información General del Ingreso</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fecha_ingreso">Fecha de ingreso:</label>
+                        <input type="date" id="fecha_ingreso" name="fecha_ingreso" required 
+                               value="{{ fecha_actual.strftime('%Y-%m-%d') if fecha_actual else '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="numero_vale">Número de vale:</label>
+                        <input type="text" id="numero_vale" name="numero_vale" 
+                               placeholder="Ej: VALE-2025-001 (opcional)">
+                        <small class="form-text text-muted">Campo opcional - puede dejarse vacío</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="recibido_por">Recibido por:</label>
+                        <input type="text" id="recibido_por" name="recibido_por" readonly 
+                               value="{{ usuario_actual.nombre_completo }}"
+                               style="background-color: #f5f5f5; cursor: not-allowed;">
+                        <small class="form-text text-muted">Este campo se llena automáticamente con su usuario</small>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="turno">Turno:</label>
+                        <select id="turno" name="turno" required>
+                            <option value="">Seleccionar turno</option>
+                            <option value="DIA" {{ 'selected' if guardia_actual == 'dia' else '' }}>DIA</option>
+                            <option value="NOCHE" {{ 'selected' if guardia_actual == 'noche' else '' }}>NOCHE</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="observaciones">Observaciones:</label>
+                        <textarea id="observaciones" name="observaciones" rows="2" 
+                                  placeholder="Detalles adicionales..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de explosivos -->
+            <div class="explosivos-section">
+                <h3><i class="fas fa-list"></i> Seleccionar Explosivos para Ingreso</h3>
+                <p class="help-text">Ingrese la cantidad para cada explosivo que está recibiendo. Los campos vacíos o con valor 0 no se incluirán en el ingreso.</p>
+                
+                <div class="explosivos-container">
+                    <div class="explosivos-header">
+                        <div class="col-descripcion">Tipo de Explosivo</div>
+                        <div class="col-codigo">Código</div>
+                        <div class="col-stock">Stock Actual</div>
+                        <div class="col-cantidad">Cantidad a Ingresar</div>
+                        <div class="col-unidad">Unidad</div>
+                    </div>
+                    
+                    <div id="explosivos-list" class="explosivos-list">
+                        {% for explosivo in explosivos %}
+                        <div class="explosivo-item" data-id="{{ explosivo.id }}" data-codigo="{{ explosivo.codigo }}" data-unidad="{{ explosivo.unidad }}">
+                            <div class="col-descripcion">
+                                <strong>{{ explosivo.descripcion }}</strong>
+                            </div>
+                            <div class="col-codigo">
+                                <span class="codigo-badge">{{ explosivo.codigo }}</span>
+                            </div>
+                            <div class="col-stock">
+                                <span class="stock-info" id="stock-{{ explosivo.id }}">
+                                    <i class="fas fa-spinner fa-spin"></i> Cargando...
+                                </span>
+                            </div>
+                            <div class="col-cantidad">
+                                <input type="number" 
+                                       name="cantidad_{{ explosivo.id }}" 
+                                       id="cantidad-{{ explosivo.id }}"
+                                       min="0" 
+                                       step="1" 
+                                       value="0"
+                                       class="cantidad-input ingreso-input"
+                                       placeholder="0">
+                            </div>
+                            <div class="col-unidad">
+                                <span class="unidad-badge">{{ explosivo.unidad }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="form-actions">
+                <button type="submit" class="btn-primary" id="btnRegistrar">
+                    <i class="fas fa-save"></i> Registrar Ingreso
+                </button>
+                <button type="button" class="btn-secondary" onclick="limpiarCantidades()">
+                    <i class="fas fa-broom"></i> Limpiar Cantidades
+                </button>
+                <button type="button" class="btn-info" onclick="calcularTotal()">
+                    <i class="fas fa-calculator"></i> Calcular Total
+                </button>
+            </div>
+
+            <!-- Resumen del ingreso -->
+            <div id="resumen-ingreso" class="resumen-card" style="display: none;">
+                <h4><i class="fas fa-clipboard-list"></i> Resumen del Ingreso</h4>
+                <div id="resumen-content"></div>
+                <div class="resumen-stats">
+                    <div class="stat">
+                        <span class="stat-label">Guardia Actual:</span>
+                        <span class="stat-value">{{ guardia_actual }}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Fecha:</span>
+                        <span class="stat-value">{{ fecha_actual.strftime('%d/%m/%Y') }}</span>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div id="notificacion" class="notificacion"></div>
+
+        <!-- Modal de Confirmación -->
+        <div id="modalConfirmacion" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fas fa-question-circle"></i> Confirmar Registro de Ingreso</h4>
+                    <span class="close" onclick="cerrarModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p><strong>¿Está seguro de que desea registrar este ingreso con los siguientes datos?</strong></p>
+                    <div id="confirmacionResumen">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal()">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn-primary" onclick="confirmarRegistro()">
+                        <i class="fas fa-check"></i> Confirmar y Registrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Estilos para el modal */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            padding: 20px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h4 {
+            margin: 0;
+        }
+
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            opacity: 0.7;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .confirmacion-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .confirmacion-item:last-child {
+            border-bottom: none;
+        }
+
+        .confirmacion-item strong {
+            color: #007bff;
+        }
+
+        .confirmacion-explosivos {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+
+        .confirmacion-explosivo {
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .confirmacion-explosivo:last-child {
+            border-bottom: none;
+        }
+    </style>
+
+    <script>
+        let stockData = {};
+
+        // Cargar stock de todos los explosivos al cargar la página
+        document.addEventListener('DOMContentLoaded', async function() {
+            await cargarStockTodos();
+            configurarEventos();
+            // No configurar fecha_vencimiento porque no existe en este formulario
+        });
+
+        // OPTIMIZADO: Cargar stock de todos los explosivos con una sola consulta
+        async function cargarStockTodos() {
+            const explosivosItems = document.querySelectorAll('.explosivo-item');
+            
+            // Recopilar todos los IDs de explosivos
+            const ids = Array.from(explosivosItems).map(item => item.dataset.id);
+            
+            try {
+                // Una sola consulta para todos los explosivos
+                const response = await fetch(`/api/stock-masivo?ids=${ids.join(',')}`);
+                
+                if (response.ok) {
+                    const stocksData = await response.json();
+                    
+                    // Actualizar cada elemento con los datos recibidos
+                    explosivosItems.forEach(item => {
+                        const id = item.dataset.id;
+                        const stockElement = document.getElementById(`stock-${id}`);
+                        
+                        if (stocksData[id]) {
+                            const data = stocksData[id];
+                            stockData[id] = {
+                                stock_disponible: data.stock_disponible,
+                                metodo: data.metodo
+                            };
+                            
+                            stockElement.innerHTML = `<span class="stock-disponible">${data.stock_disponible}</span>`;
+                        } else {
+                            stockElement.innerHTML = '<span class="stock-error">Sin datos</span>';
+                        }
+                    });
+                    
+                    console.log(`✅ Stock cargado para ${Object.keys(stocksData).length} explosivos (método optimizado)`);
+                } else {
+                    console.error('Error al cargar stock masivo, usando método individual...');
+                    await cargarStockTodosIndividual(); // Fallback
+                }
+            } catch (error) {
+                console.error('Error de conexión, usando método individual...', error);
+                await cargarStockTodosIndividual(); // Fallback
+            }
+        }
+
+        // Método original como fallback
+        async function cargarStockTodosIndividual() {
+            const explosivosItems = document.querySelectorAll('.explosivo-item');
+            
+            for (const item of explosivosItems) {
+                const id = item.dataset.id;
+                const stockElement = document.getElementById(`stock-${id}`);
+                
+                try {
+                    const response = await fetch(`/api/stock/${id}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        stockData[id] = data;
+                        stockElement.innerHTML = `<span class="stock-disponible">${data.stock_disponible}</span>`;
+                    } else {
+                        stockElement.innerHTML = '<span class="stock-error">Error</span>';
+                    }
+                } catch (error) {
+                    stockElement.innerHTML = '<span class="stock-error">Sin conexión</span>';
+                }
+            }
+        }
+
+        // Configurar eventos
+        function configurarEventos() {
+            // Validación en tiempo real de cantidades
+            document.querySelectorAll('.cantidad-input').forEach(input => {
+                input.addEventListener('input', function() {
+                    actualizarResumen();
+                });
+
+                input.addEventListener('blur', function() {
+                    if (this.value === '' || this.value < 0) {
+                        this.value = 0;
+                    }
+                });
+            });
+        }
+
+        // Limpiar todas las cantidades
+        function limpiarCantidades() {
+            document.querySelectorAll('.cantidad-input').forEach(input => {
+                input.value = 0;
+            });
+            actualizarResumen();
+        }
+
+        // Limpiar formulario completo
+        function limpiarFormulario() {
+            // Limpiar campos del formulario excepto los que se llenan automáticamente
+            document.querySelectorAll('input[type="text"], input[type="number"], textarea, select').forEach(input => {
+                if (input.id !== 'fecha_ingreso' && input.id !== 'recibido_por') {
+                    input.value = '';
+                }
+            });
+            
+            // Limpiar cantidades de explosivos
+            limpiarCantidades();
+            
+            // Ocultar resumen
+            document.getElementById('resumen-ingreso').style.display = 'none';
+        }
+
+        // Calcular y mostrar total
+        function calcularTotal() {
+            actualizarResumen();
+            document.getElementById('resumen-ingreso').style.display = 'block';
+            document.getElementById('resumen-ingreso').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Actualizar resumen
+        function actualizarResumen() {
+            const resumenContent = document.getElementById('resumen-content');
+            const items = [];
+            let totalItems = 0;
+
+            document.querySelectorAll('.explosivo-item').forEach(item => {
+                const id = item.dataset.id;
+                const codigo = item.dataset.codigo;
+                const unidad = item.dataset.unidad;
+                const descripcion = item.querySelector('.col-descripcion strong').textContent;
+                const cantidadInput = document.getElementById(`cantidad-${id}`);
+                const cantidad = parseInt(cantidadInput.value) || 0;
+
+                if (cantidad > 0) {
+                    items.push({
+                        codigo,
+                        descripcion,
+                        cantidad,
+                        unidad
+                    });
+                    totalItems++;
+                }
+            });
+
+            if (items.length === 0) {
+                resumenContent.innerHTML = '<p class="no-items">No hay explosivos seleccionados</p>';
+            } else {
+                let html = `<div class="resumen-items">`;
+                items.forEach(item => {
+                    html += `
+                        <div class="resumen-item">
+                            <span class="item-codigo">${item.codigo}</span>
+                            <span class="item-descripcion">${item.descripcion}</span>
+                            <span class="item-cantidad">${item.cantidad} ${item.unidad}</span>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                html += `<div class="resumen-total">Total de tipos de explosivos: <strong>${totalItems}</strong></div>`;
+                resumenContent.innerHTML = html;
+            }
+        }
+
+        // Manejar envío del formulario
+        // Variables globales para almacenar los datos del formulario
+        let datosFormulario = null;
+        let explosivosSeleccionados = [];
+
+        // Función para cerrar el modal
+        function cerrarModal() {
+            document.getElementById('modalConfirmacion').style.display = 'none';
+        }
+
+        // Cerrar modal al hacer clic fuera de él
+        window.onclick = function(event) {
+            const modal = document.getElementById('modalConfirmacion');
+            if (event.target === modal) {
+                cerrarModal();
+            }
+        }
+
+        // Función para mostrar el modal de confirmación
+        function mostrarConfirmacion(formData, explosivos) {
+            console.log('📋 mostrarConfirmacion ejecutada con', explosivos.length, 'explosivos');
+            datosFormulario = formData;
+            explosivosSeleccionados = explosivos;
+
+            // Generar resumen para confirmación
+            let resumenHTML = `
+                <div class="confirmacion-item">
+                    <strong>Fecha:</strong> ${document.getElementById('fecha_ingreso').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Turno:</strong> ${document.getElementById('turno').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Número de Vale:</strong> ${document.getElementById('numero_vale').value || 'No especificado'}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Recibido por:</strong> ${document.getElementById('recibido_por').value}
+                </div>
+            `;
+
+            if (document.getElementById('observaciones').value.trim()) {
+                resumenHTML += `
+                    <div class="confirmacion-item">
+                        <strong>Observaciones:</strong> ${document.getElementById('observaciones').value}
+                    </div>
+                `;
+            }
+
+            resumenHTML += `
+                <div class="confirmacion-item">
+                    <strong>Explosivos a registrar:</strong>
+                    <div class="confirmacion-explosivos">
+            `;
+
+            let totalExplosivos = 0;
+            explosivos.forEach(exp => {
+                const explosivo = document.querySelector(`.explosivo-item[data-id="${exp.explosivo_id}"]`);
+                const nombre = explosivo.querySelector('.col-descripcion strong').textContent;
+                const unidad = explosivo.querySelector('.col-unidad .unidad-badge').textContent;
+                
+                resumenHTML += `
+                    <div class="confirmacion-explosivo">
+                        <strong>${nombre}</strong>: ${exp.cantidad} ${unidad}
+                    </div>
+                `;
+                totalExplosivos += parseInt(exp.cantidad);
+            });
+
+            resumenHTML += `
+                    </div>
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Total de explosivos:</strong> ${explosivos.length} tipos diferentes
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Cantidad total:</strong> ${totalExplosivos} unidades
+                </div>
+            `;
+
+            document.getElementById('confirmacionResumen').innerHTML = resumenHTML;
+            document.getElementById('modalConfirmacion').style.display = 'block';
+        }
+
+        // Función para enviar el formulario después de confirmación
+        async function confirmarRegistro() {
+            console.log('✅ confirmarRegistro ejecutada');
+            cerrarModal();
+            
+            const notificacion = document.getElementById('notificacion');
+            const btnRegistrar = document.getElementById('btnRegistrar');
+            
+            console.log('🔘 Botón encontrado:', !!btnRegistrar);
+            
+            // PROTECCIÓN ANTI-DUPLICADOS: Verificar si ya se está procesando
+            if (btnRegistrar && btnRegistrar.disabled) {
+                console.log('⚠️ Botón ya está deshabilitado, saliendo');
+                return; // Ya se está procesando
+            }
+            
+            // Deshabilitar botón y cambiar texto
+            if (btnRegistrar) {
+                console.log('🔄 Cambiando botón a estado procesando');
+                btnRegistrar.disabled = true;
+                btnRegistrar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            }
+            
+            try {
+                const response = await fetch('/ingresos/nuevo', {
+                    method: 'POST',
+                    body: datosFormulario
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    notificacion.className = 'notificacion success';
+                    notificacion.textContent = '✅ Ingreso registrado correctamente. Todos los campos han sido limpiados.';
+                    // Limpiar formulario completo
+                    limpiarFormulario();
+                    // Recargar stock
+                    await cargarStockTodos();
+                } else {
+                    notificacion.className = 'notificacion error';
+                    notificacion.textContent = result.error || 'Error al registrar ingresos';
+                }
+                
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 20000);
+                
+            } catch (error) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Error de conexión';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 20000);
+            } finally {
+                // Rehabilitar botón y restaurar texto original
+                if (btnRegistrar) {
+                    btnRegistrar.disabled = false;
+                    btnRegistrar.innerHTML = '<i class="fas fa-save"></i> Registrar Ingreso';
+                }
+            }
+        }
+
+        document.getElementById('ingresoForm').addEventListener('submit', async function(e) {
+            console.log('🎯 EVENT SUBMIT EJECUTADO en nuevo_ingreso');
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const notificacion = document.getElementById('notificacion');
+            
+            // Datos generales (solo campos que existen en este formulario)
+            formData.append('fecha_ingreso', document.getElementById('fecha_ingreso').value);
+            formData.append('numero_vale', document.getElementById('numero_vale').value);
+            formData.append('recibido_por', document.getElementById('recibido_por').value);
+            formData.append('turno', document.getElementById('turno').value);
+            formData.append('observaciones', document.getElementById('observaciones').value);
+            
+            // Recopilar explosivos con cantidad > 0
+            const explosivos = [];
+            document.querySelectorAll('.explosivo-item').forEach(item => {
+                const id = item.dataset.id;
+                const cantidadInput = document.getElementById(`cantidad-${id}`);
+                const cantidad = parseInt(cantidadInput.value) || 0;
+                
+                if (cantidad > 0) {
+                    explosivos.push({
+                        explosivo_id: id,
+                        cantidad: cantidad
+                    });
+                }
+            });
+            
+            if (explosivos.length === 0) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Debe seleccionar al menos un explosivo con cantidad mayor a 0';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 20000);
+                return;
+            }
+            
+            formData.append('explosivos', JSON.stringify(explosivos));
+            
+            // Mostrar modal de confirmación en lugar de enviar directamente
+            console.log('🔔 Llamando a mostrarConfirmacion con', explosivos.length, 'explosivos');
+            mostrarConfirmacion(formData, explosivos);
+        });
+    </script>
+</body>
+</html>

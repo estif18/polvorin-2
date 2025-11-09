@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionar Labores - Sistema Polvorín</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { 
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .main-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin: 20px;
+            padding: 30px;
+        }
+        .search-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .labor-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        .labor-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .labor-codigo {
+            font-weight: bold;
+            color: #2a5298;
+            font-size: 1.1em;
+        }
+        .labor-nombre {
+            color: #555;
+            margin: 5px 0;
+        }
+        .labor-descripcion {
+            color: #777;
+            font-size: 0.9em;
+        }
+        .btn-nuevo-labor {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            padding: 12px 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn-nuevo-labor:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+            color: white;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+        }
+        .form-control:focus {
+            border-color: #2a5298;
+            box-shadow: 0 0 0 0.2rem rgba(42, 82, 152, 0.25);
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #17a2b8, #20c997);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background: linear-gradient(135deg, #1e3c72, #2a5298);">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
+                <i class="fas fa-warehouse me-2"></i>Sistema Polvorín
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user-shield me-1"></i>{{ user_name }}
+                </span>
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>Inicio
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="main-container">
+            <!-- Header -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <h2>
+                        <i class="fas fa-tools text-primary me-2"></i>
+                        Gestión de Labores
+                    </h2>
+                    <p class="text-muted">Administrar las labores disponibles para salidas y devoluciones</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-nuevo-labor" data-bs-toggle="modal" data-bs-target="#modalNuevaLabor">
+                        <i class="fas fa-plus me-2"></i>Nueva Labor
+                    </button>
+                </div>
+            </div>
+
+            <!-- Estadísticas -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="stats-card">
+                        <i class="fas fa-list-ul fa-2x mb-2"></i>
+                        <h4 id="total-labores">{{ labores|length }}</h4>
+                        <p class="mb-0">Labores Activas</p>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <!-- Búsqueda -->
+                    <div class="search-section">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="fas fa-search"></i>
+                                    </span>
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="buscarLabor" 
+                                           placeholder="Buscar por código, nombre o descripción...">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-outline-primary w-100" onclick="buscarLabores()">
+                                    <i class="fas fa-search me-2"></i>Buscar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Labores -->
+            <div class="row">
+                <div class="col-12">
+                    <div id="lista-labores">
+                        {% for labor in labores %}
+                        <div class="labor-card" data-labor-id="{{ labor.id }}">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <div class="labor-codigo">{{ labor.nombre }}</div>
+                                    {% if labor.descripcion %}
+                                    <div class="labor-descripcion">{{ labor.descripcion }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <button class="btn btn-outline-primary btn-sm me-2 btn-editar-labor" 
+                                            data-id="{{ labor.id }}" 
+                                            data-nombre="{{ labor.nombre }}" 
+                                            data-descripcion="{{ labor.descripcion or '' }}">
+                                        <i class="fas fa-edit me-1"></i>Editar
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm btn-eliminar-labor" 
+                                            data-id="{{ labor.id }}" 
+                                            data-nombre="{{ labor.nombre }}">
+                                        <i class="fas fa-trash me-1"></i>Eliminar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Mensaje si no hay labores -->
+                    <div id="sin-resultados" class="text-center py-5" style="display: none;">
+                        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No se encontraron labores</h5>
+                        <p class="text-muted">Intenta con otros términos de búsqueda</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nueva Labor -->
+    <div class="modal fade" id="modalNuevaLabor" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-plus me-2"></i>Nueva Labor
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formNuevaLabor">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="nuevoNombre" class="form-label">Nombre *</label>
+                            <input type="text" class="form-control" id="nuevoNombre" name="nombre" required>
+                            <div class="form-text">Ejemplo: M-1005, N-830, BERLIN, etc.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="nuevaDescripcion" class="form-label">Descripción</label>
+                            <textarea class="form-control" id="nuevaDescripcion" name="descripcion" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Guardar Labor
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Labor -->
+    <div class="modal fade" id="modalEditarLabor" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-edit me-2"></i>Editar Labor
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formEditarLabor">
+                    <input type="hidden" id="editarLaborId" name="labor_id">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="editarNombre" class="form-label">Nombre *</label>
+                            <input type="text" class="form-control" id="editarNombre" name="nombre" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editarDescripcion" class="form-label">Descripción</label>
+                            <textarea class="form-control" id="editarDescripcion" name="descripcion" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Actualizar Labor
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Buscar labores
+        function buscarLabores() {
+            const termino = document.getElementById('buscarLabor').value.trim();
+            
+            fetch(`/api/labores?buscar=${encodeURIComponent(termino)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        mostrarLabores(data.labores);
+                        document.getElementById('total-labores').textContent = data.total;
+                    } else {
+                        console.error('Error buscando labores:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error en búsqueda:', error);
+                });
+        }
+
+        // Mostrar labores en la lista
+        function mostrarLabores(labores) {
+            const container = document.getElementById('lista-labores');
+            const sinResultados = document.getElementById('sin-resultados');
+            
+            if (labores.length === 0) {
+                container.style.display = 'none';
+                sinResultados.style.display = 'block';
+                return;
+            }
+            
+            container.style.display = 'block';
+            sinResultados.style.display = 'none';
+            
+            container.innerHTML = labores.map(labor => `
+                <div class="labor-card" data-labor-id="${labor.id}">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="labor-codigo">${labor.nombre}</div>
+                            ${labor.descripcion ? `<div class="labor-descripcion">${labor.descripcion}</div>` : ''}
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-outline-primary btn-sm me-2" 
+                                    onclick="editarLabor(${labor.id}, '${labor.nombre}', '${labor.descripcion}')">
+                                <i class="fas fa-edit me-1"></i>Editar
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" 
+                                    onclick="eliminarLabor(${labor.id}, '${labor.nombre}')">
+                                <i class="fas fa-trash me-1"></i>Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Buscar al presionar Enter
+        document.getElementById('buscarLabor').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                buscarLabores();
+            }
+        });
+
+        // Agregar nueva labor
+        document.getElementById('formNuevaLabor').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            fetch('/agregar-labor', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('modalNuevaLabor')).hide();
+                    this.reset();
+                    buscarLabores(); // Recargar lista
+                    mostrarAlerta('Labor agregada exitosamente', 'success');
+                } else {
+                    mostrarAlerta(data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mostrarAlerta('Error agregando la labor', 'danger');
+            });
+        });
+
+        // Editar labor
+        function editarLabor(id, nombre, descripcion) {
+            document.getElementById('editarLaborId').value = id;
+            document.getElementById('editarNombre').value = nombre;
+            document.getElementById('editarDescripcion').value = descripcion || '';
+            
+            new bootstrap.Modal(document.getElementById('modalEditarLabor')).show();
+        }
+
+        // Guardar edición
+        document.getElementById('formEditarLabor').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const laborId = document.getElementById('editarLaborId').value;
+            const formData = new FormData(this);
+            
+            fetch(`/editar-labor/${laborId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('modalEditarLabor')).hide();
+                    buscarLabores(); // Recargar lista
+                    mostrarAlerta('Labor actualizada exitosamente', 'success');
+                } else {
+                    mostrarAlerta(data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mostrarAlerta('Error actualizando la labor', 'danger');
+            });
+        });
+
+        // Eliminar labor
+        function eliminarLabor(id, nombre) {
+            if (confirm(`¿Estás seguro de que quieres eliminar la labor "${nombre}"?\n\nEsta acción no se puede deshacer.`)) {
+                fetch(`/eliminar-labor/${id}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        buscarLabores(); // Recargar lista
+                        mostrarAlerta('Labor eliminada exitosamente', 'success');
+                    } else {
+                        mostrarAlerta(data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    mostrarAlerta('Error eliminando la labor', 'danger');
+                });
+            }
+        }
+
+        // Mostrar alertas
+        function mostrarAlerta(mensaje, tipo) {
+            const alertaDiv = document.createElement('div');
+            alertaDiv.className = `alert alert-${tipo} alert-dismissible fade show position-fixed`;
+            alertaDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertaDiv.innerHTML = `
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertaDiv);
+            
+            // Auto-remove después de 5 segundos
+            setTimeout(() => {
+                if (alertaDiv.parentNode) {
+                    alertaDiv.remove();
+                }
+            }, 5000);
+        }
+
+        // Event listeners para botones de editar y eliminar usando data attributes
+        document.addEventListener('click', function(e) {
+            // Manejar botones de editar
+            if (e.target.closest('.btn-editar-labor')) {
+                const btn = e.target.closest('.btn-editar-labor');
+                const id = btn.dataset.id;
+                const nombre = btn.dataset.nombre;
+                const descripcion = btn.dataset.descripcion;
+                editarLabor(id, nombre, descripcion);
+            }
+            
+            // Manejar botones de eliminar
+            if (e.target.closest('.btn-eliminar-labor')) {
+                const btn = e.target.closest('.btn-eliminar-labor');
+                const id = btn.dataset.id;
+                const nombre = btn.dataset.nombre;
+                eliminarLabor(id, nombre);
+            }
+        });
+    </script>
+</body>
+</html>

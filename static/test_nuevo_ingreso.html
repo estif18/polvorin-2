@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prueba de depuración - Nuevo Ingreso</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .error { color: red; }
+        .success { color: green; }
+        .btn { padding: 10px 20px; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Prueba de depuración - Nuevo Ingreso</h1>
+    
+    <div class="debug">
+        <h3>Estado de los elementos:</h3>
+        <div id="elementStatus"></div>
+    </div>
+    
+    <form id="ingresoForm">
+        <div>
+            <label>Fecha de ingreso:</label>
+            <input type="date" id="fecha_ingreso" name="fecha_ingreso" required>
+        </div>
+        <div>
+            <label>Número de vale:</label>
+            <input type="text" id="numero_vale" name="numero_vale">
+        </div>
+        <div>
+            <label>Recibido por:</label>
+            <input type="text" id="recibido_por" name="recibido_por" required>
+        </div>
+        <div>
+            <label>Turno:</label>
+            <select id="turno" name="turno" required>
+                <option value="">Seleccione turno</option>
+                <option value="DIA">Día</option>
+                <option value="NOCHE">Noche</option>
+            </select>
+        </div>
+        <div>
+            <label>Observaciones:</label>
+            <textarea id="observaciones" name="observaciones"></textarea>
+        </div>
+        
+        <!-- Simulación de explosivo -->
+        <div class="explosivo-item" data-id="1">
+            <h4>Explosivo de Prueba</h4>
+            <input type="number" id="cantidad-1" min="0" value="10">
+            <span class="unidad">kg</span>
+        </div>
+        
+        <button type="submit" id="btnRegistrar" class="btn">
+            <i class="fas fa-save"></i> Registrar Ingreso
+        </button>
+    </form>
+    
+    <div class="debug">
+        <h3>Log de eventos:</h3>
+        <div id="eventLog"></div>
+    </div>
+    
+    <div id="notificacion" style="display:none; padding: 10px; margin: 10px 0; border-radius: 4px;"></div>
+
+    <script>
+        // Función de logging
+        function log(message) {
+            const logDiv = document.getElementById('eventLog');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>${time}: ${message}</div>`;
+            console.log(message);
+        }
+        
+        // Verificar elementos al cargar
+        document.addEventListener('DOMContentLoaded', function() {
+            log('DOM loaded');
+            
+            const statusDiv = document.getElementById('elementStatus');
+            const form = document.getElementById('ingresoForm');
+            const button = document.getElementById('btnRegistrar');
+            
+            statusDiv.innerHTML = `
+                <div>Formulario encontrado: ${form ? 'SÍ' : 'NO'}</div>
+                <div>Botón encontrado: ${button ? 'SÍ' : 'NO'}</div>
+                <div>Event listeners: preparando...</div>
+            `;
+        });
+
+        // Event listener principal
+        document.getElementById('ingresoForm').addEventListener('submit', async function(e) {
+            log('Event listener de submit ejecutado!');
+            e.preventDefault();
+            log('preventDefault() ejecutado');
+            
+            const notificacion = document.getElementById('notificacion');
+            
+            // Datos básicos
+            const fechaIngreso = document.getElementById('fecha_ingreso').value;
+            const numeroVale = document.getElementById('numero_vale').value;
+            const recibidoPor = document.getElementById('recibido_por').value;
+            const turno = document.getElementById('turno').value;
+            const observaciones = document.getElementById('observaciones').value;
+            
+            log(`Datos del formulario: fecha=${fechaIngreso}, vale=${numeroVale}, recibido=${recibidoPor}, turno=${turno}`);
+            
+            // Validación básica
+            if (!fechaIngreso || !recibidoPor || !turno) {
+                log('Validación falló - campos requeridos vacíos');
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Faltan campos requeridos';
+                notificacion.style.display = 'block';
+                return;
+            }
+            
+            // Simular explosivos
+            const explosivos = [{
+                explosivo_id: 1,
+                cantidad: 10
+            }];
+            
+            log(`Explosivos: ${JSON.stringify(explosivos)}`);
+            
+            // Preparar FormData
+            const formData = new FormData();
+            formData.append('fecha_ingreso', fechaIngreso);
+            formData.append('numero_vale', numeroVale);
+            formData.append('recibido_por', recibidoPor);
+            formData.append('turno', turno);
+            formData.append('observaciones', observaciones);
+            formData.append('explosivos', JSON.stringify(explosivos));
+            
+            log('FormData preparado, enviando petición...');
+            
+            try {
+                const response = await fetch('/ingresos/nuevo', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                log(`Respuesta recibida: status=${response.status}`);
+                
+                const result = await response.json();
+                log(`Resultado: ${JSON.stringify(result)}`);
+                
+                if (response.ok) {
+                    notificacion.className = 'notificacion success';
+                    notificacion.textContent = '✅ Ingreso registrado correctamente';
+                } else {
+                    notificacion.className = 'notificacion error';
+                    notificacion.textContent = result.error || 'Error al registrar';
+                }
+                
+            } catch (error) {
+                log(`Error en fetch: ${error.message}`);
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Error de conexión';
+            }
+            
+            notificacion.style.display = 'block';
+            setTimeout(() => notificacion.style.display = 'none', 10000);
+        });
+        
+        // Agregar event listener para el click del botón específicamente
+        document.getElementById('btnRegistrar').addEventListener('click', function(e) {
+            log('Click en botón registrar detectado');
+        });
+        
+        log('Event listeners agregados');
+    </script>
+</body>
+</html>

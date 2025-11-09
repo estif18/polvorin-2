@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Salida - Sistema Polvorín</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3 border-bottom">
+                    <h1><i class="fas fa-edit text-warning"></i> Editar Salida #{{ salida.id }}</h1>
+                    <div>
+                        <a href="{{ url_for('listar_salidas_edicion') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Volver a Lista
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información del Registro Original -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Datos Originales</h6>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Explosivo:</strong> {{ salida.explosivo.codigo }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Cantidad:</strong> {{ "%.2f"|format(salida.cantidad) }} {{ salida.explosivo.unidad }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Fecha:</strong> {{ salida.fecha_salida.strftime('%d/%m/%Y %H:%M') }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Labor:</strong> {{ salida.labor or 'Sin especificar' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario de Edición -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-edit"></i> Formulario de Edición
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" id="formEdicion">
+                            <div class="row">
+                                <!-- Explosivo -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="explosivo_id" class="form-label">
+                                        <i class="fas fa-bomb"></i> Explosivo *
+                                    </label>
+                                    <select class="form-select" id="explosivo_id" name="explosivo_id" required>
+                                        {% for explosivo in explosivos %}
+                                            <option value="{{ explosivo.id }}" 
+                                                    {{ 'selected' if explosivo.id == salida.explosivo_id }}>
+                                                {{ explosivo.codigo }} - {{ explosivo.descripcion }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <!-- Cantidad -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="cantidad" class="form-label">
+                                        <i class="fas fa-weight"></i> Cantidad *
+                                    </label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="cantidad" name="cantidad" 
+                                               value="{{ salida.cantidad }}" step="0.01" min="0" required>
+                                        <span class="input-group-text">{{ salida.explosivo.unidad }}</span>
+                                    </div>
+                                </div>
+
+                                <!-- Fecha y Hora -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="fecha_salida" class="form-label">
+                                        <i class="fas fa-calendar"></i> Fecha y Hora *
+                                    </label>
+                                    <input type="datetime-local" class="form-control" id="fecha_salida" name="fecha_salida" 
+                                           value="{{ salida.fecha_salida.strftime('%Y-%m-%dT%H:%M') }}" required>
+                                </div>
+
+                                <!-- Turno -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="guardia" class="form-label">
+                                        <i class="fas fa-clock"></i> Turno *
+                                    </label>
+                                    <select class="form-select" id="guardia" name="guardia" required>
+                                        <option value="dia" {{ 'selected' if salida.guardia == 'dia' }}>Día (6:00-14:00)</option>
+                                        <option value="noche" {{ 'selected' if salida.guardia == 'noche' }}>Noche (14:00-6:00)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Labor -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="labor" class="form-label">
+                                        <i class="fas fa-tools"></i> Labor
+                                    </label>
+                                    <input type="text" class="form-control" id="labor" name="labor" 
+                                           value="{{ salida.labor or '' }}" placeholder="Ej: M-1005, I-285 V6">
+                                    <div class="form-text">Nombre o código de la labor donde se utilizó el explosivo</div>
+                                </div>
+
+                                <!-- Motivo -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="motivo" class="form-label">
+                                        <i class="fas fa-question-circle"></i> Motivo
+                                    </label>
+                                    <input type="text" class="form-control" id="motivo" name="motivo" 
+                                           value="{{ salida.motivo or '' }}" placeholder="Motivo de la salida">
+                                </div>
+
+                                <!-- Destino -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="destino" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i> Destino
+                                    </label>
+                                    <input type="text" class="form-control" id="destino" name="destino" 
+                                           value="{{ salida.destino or '' }}" placeholder="Destino de los explosivos">
+                                </div>
+
+                                <!-- Responsable -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="responsable" class="form-label">
+                                        <i class="fas fa-user"></i> Responsable
+                                    </label>
+                                    <input type="text" class="form-control" id="responsable" name="responsable" 
+                                           value="{{ salida.responsable or '' }}" placeholder="Nombre del responsable">
+                                </div>
+                            </div>
+
+                            <!-- Botones -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="d-flex justify-content-between">
+                                        <a href="{{ url_for('listar_salidas_edicion') }}" class="btn btn-secondary">
+                                            <i class="fas fa-times"></i> Cancelar
+                                        </a>
+                                        <button type="submit" class="btn btn-warning">
+                                            <i class="fas fa-save"></i> Guardar Cambios
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información del Historial -->
+        {% if salida.observaciones %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-secondary">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-history"></i> Historial de Cambios
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-0">{{ salida.observaciones }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Advertencia -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>¡Atención!</strong> Los cambios realizados afectarán el stock actual del explosivo. 
+                    Verifica cuidadosamente los datos antes de guardar. Este cambio quedará registrado en el historial.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Validación del formulario
+        document.getElementById('formEdicion').addEventListener('submit', function(e) {
+            const cantidad = parseFloat(document.getElementById('cantidad').value);
+            const fecha = new Date(document.getElementById('fecha_salida').value);
+            const hoy = new Date();
+
+            // Validar cantidad
+            if (cantidad <= 0) {
+                e.preventDefault();
+                alert('La cantidad debe ser mayor a 0');
+                return;
+            }
+
+            // Validar fecha no muy futura
+            const unMesDelante = new Date();
+            unMesDelante.setMonth(unMesDelante.getMonth() + 1);
+            
+            if (fecha > unMesDelante) {
+                e.preventDefault();
+                alert('La fecha no puede ser más de un mes en el futuro');
+                return;
+            }
+
+            // Confirmar cambios
+            if (!confirm('¿Estás seguro de que deseas guardar estos cambios? Esta acción quedará registrada en el historial.')) {
+                e.preventDefault();
+            }
+        });
+
+        // Sugerencias de labores comunes
+        const laboresComunes = ['M-1005', 'I-285 V6', 'N-775', 'P-554', 'M-535 V5'];
+        const inputLabor = document.getElementById('labor');
+        
+        // Crear datalist para autocompletar
+        const datalist = document.createElement('datalist');
+        datalist.id = 'labores-sugeridas';
+        laboresComunes.forEach(labor => {
+            const option = document.createElement('option');
+            option.value = labor;
+            datalist.appendChild(option);
+        });
+        document.body.appendChild(datalist);
+        inputLabor.setAttribute('list', 'labores-sugeridas');
+    </script>
+</body>
+</html>

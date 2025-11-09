@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Edición - Sistema Polvorín</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/notificaciones.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3 border-bottom">
+                    <h1><i class="fas fa-edit text-warning"></i> Panel de Edición de Datos</h1>
+                    <div>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Volver al Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertas -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Panel Principal -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>¡PRECAUCIÓN!</strong> Esta sección permite editar y eliminar datos existentes. 
+                    Solo los administradores pueden acceder. Los cambios son permanentes y se registran en el historial.
+                </div>
+            </div>
+        </div>
+
+        <!-- Opciones de Edición -->
+        <div class="row mt-4">
+            <!-- Editar Salidas -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 border-danger">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-arrow-up"></i> Editar Salidas
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Corregir registros de salidas de explosivos:
+                        </p>
+                        <ul class="text-muted small">
+                            <li>Cantidades incorrectas</li>
+                            <li>Fechas erróneas</li>
+                            <li>Labores mal escritas</li>
+                            <li>Datos de responsables</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ url_for('listar_salidas_edicion') }}" class="btn btn-danger w-100">
+                            <i class="fas fa-edit"></i> Editar Salidas
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editar Ingresos -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-arrow-down"></i> Editar Ingresos
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Corregir registros de ingresos de explosivos:
+                        </p>
+                        <ul class="text-muted small">
+                            <li>Cantidades incorrectas</li>
+                            <li>Fechas de ingreso</li>
+                            <li>Datos de proveedores</li>
+                            <li>Motivos de ingreso</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ url_for('listar_ingresos_edicion') }}" class="btn btn-success w-100">
+                            <i class="fas fa-edit"></i> Editar Ingresos
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editar Devoluciones -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 border-info">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-undo"></i> Editar Devoluciones
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Corregir registros de devoluciones:
+                        </p>
+                        <ul class="text-muted small">
+                            <li>Cantidades devueltas</li>
+                            <li>Fechas de devolución</li>
+                            <li>Motivos de devolución</li>
+                            <li>Condición del explosivo</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ url_for('listar_devoluciones_edicion') }}" class="btn btn-info w-100">
+                            <i class="fas fa-edit"></i> Editar Devoluciones
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Segunda fila: Gestión de Datos Maestros -->
+        <div class="row">
+            <!-- Gestionar Labores -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-tools"></i> Gestionar Labores
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Administrar labores del sistema:
+                        </p>
+                        <ul class="text-muted small">
+                            <li>Agregar nuevas labores</li>
+                            <li>Editar labores existentes</li>
+                            <li>Buscar y filtrar labores</li>
+                            <li>Facilitar selección en registros</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ url_for('gestionar_labores') }}" class="btn btn-warning w-100">
+                            <i class="fas fa-tools"></i> Gestionar Labores
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Gestionar Tipos de Actividad -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-tasks"></i> Tipos de Actividad
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Administrar tipos de actividad:
+                        </p>
+                        <ul class="text-muted small">
+                            <li>Breasting, Realce, Sub nivel</li>
+                            <li>Desquinche Mineral, Avance</li>
+                            <li>Agregar nuevos tipos</li>
+                            <li>Categorización de salidas</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{{ url_for('gestionar_tipos_actividad') }}" class="btn btn-success w-100">
+                            <i class="fas fa-tasks"></i> Gestionar Tipos
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estadísticas Rápidas -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-bar"></i> Estadísticas de Movimientos (Últimos 7 días)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 bg-light">
+                                    <h3 class="text-danger" id="total-salidas">-</h3>
+                                    <p class="mb-0">Total Salidas</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 bg-light">
+                                    <h3 class="text-success" id="total-ingresos">-</h3>
+                                    <p class="mb-0">Total Ingresos</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 bg-light">
+                                    <h3 class="text-info" id="total-devoluciones">-</h3>
+                                    <p class="mb-0">Total Devoluciones</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Herramientas Administrativas -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-dark">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-tools"></i> Herramientas Administrativas
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-grid">
+                                    <button class="btn btn-outline-danger" onclick="limpiarRegistrosEliminados()">
+                                        <i class="fas fa-broom"></i> Limpiar Registros Eliminados
+                                    </button>
+                                    <small class="text-muted mt-1">
+                                        Elimina físicamente registros marcados como eliminados pero que siguen en la base de datos
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="alert alert-warning small mb-0">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <strong>Precaución:</strong> Esta operación es irreversible. 
+                                    Se eliminaran permanentemente los registros marcados como eliminados.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información Importante -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info-circle"></i> Información Importante
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i class="fas fa-shield-alt text-primary"></i> Seguridad</h6>
+                                <ul class="small">
+                                    <li>Todos los cambios quedan registrados con fecha y usuario</li>
+                                    <li>Se mantiene historial de valores anteriores</li>
+                                    <li>Solo administradores pueden editar/eliminar</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="fas fa-exclamation-triangle text-warning"></i> Precauciones</h6>
+                                <ul class="small">
+                                    <li>Verificar datos antes de guardar cambios</li>
+                                    <li>Eliminar solo registros realmente erróneos</li>
+                                    <li>Los cambios afectan el stock actual</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Cargar estadísticas rápidas
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/estadisticas-edicion')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('total-salidas').textContent = data.total_salidas || 0;
+                        document.getElementById('total-ingresos').textContent = data.total_ingresos || 0;
+                        document.getElementById('total-devoluciones').textContent = data.total_devoluciones || 0;
+                    }
+                })
+                .catch(error => {
+                    console.log('Error cargando estadísticas:', error);
+                });
+        });
+
+        // Función para limpiar registros eliminados
+        function limpiarRegistrosEliminados() {
+            if (confirm('¿Está seguro de que desea eliminar físicamente todos los registros marcados como eliminados?\n\nEsta operación es IRREVERSIBLE.')) {
+                if (confirm('CONFIRMACIÓN FINAL: Los registros se eliminarán permanentemente de la base de datos.\n\n¿Continuar?')) {
+                    fetch('/admin/limpiar-eliminados', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(`✅ ${data.message}\n\nDetalle:\n- Salidas: ${data.detalle.salidas}\n- Ingresos: ${data.detalle.ingresos}\n- Devoluciones: ${data.detalle.devoluciones}`);
+                            location.reload(); // Recargar para actualizar estadísticas
+                        } else {
+                            alert('❌ Error: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        alert('❌ Error limpiando registros: ' + error);
+                    });
+                }
+            }
+        }
+    </script>
+    <script src="{{ url_for('static', filename='js/notificaciones.js') }}"></script>
+</body>
+</html>

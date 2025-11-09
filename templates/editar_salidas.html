@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Salidas - Sistema Polvorín</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet">
+    <style>
+        /* Asegurar que el modal funcione correctamente */
+        .modal {
+            z-index: 1055 !important;
+        }
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
+        .modal-dialog {
+            z-index: 1060 !important;
+        }
+        .modal-content {
+            pointer-events: auto !important;
+        }
+        .btn {
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3 border-bottom">
+                    <h1><i class="fas fa-arrow-up text-danger"></i> Editar Salidas</h1>
+                    <div>
+                        <a href="{{ url_for('panel_edicion') }}" class="btn btn-secondary me-2">
+                            <i class="fas fa-arrow-left"></i> Volver al Panel
+                        </a>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-home"></i> Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertas -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Filtros -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-filter"></i> Filtros de Búsqueda
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="GET" class="row g-3">
+                            <div class="col-md-3">
+                                <label for="fecha_desde" class="form-label">Fecha Desde</label>
+                                <input type="date" class="form-control" id="fecha_desde" name="fecha_desde" 
+                                       value="{{ fecha_desde }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="fecha_hasta" class="form-label">Fecha Hasta</label>
+                                <input type="date" class="form-control" id="fecha_hasta" name="fecha_hasta" 
+                                       value="{{ fecha_hasta }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="explosivo_id" class="form-label">Explosivo</label>
+                                <select class="form-select" id="explosivo_id" name="explosivo_id">
+                                    <option value="">Todos los explosivos</option>
+                                    {% for explosivo in explosivos %}
+                                        <option value="{{ explosivo.id }}" 
+                                                {{ 'selected' if explosivo_id|string == explosivo.id|string }}>
+                                            {{ explosivo.codigo }} - {{ explosivo.descripcion }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Salidas -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list"></i> Salidas Registradas
+                        </h5>
+                        <span class="badge bg-danger">{{ salidas|length }} registros</span>
+                    </div>
+                    <div class="card-body">
+                        {% if salidas %}
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Explosivo</th>
+                                            <th>Cantidad</th>
+                                            <th>Fecha</th>
+                                            <th>Turno</th>
+                                            <th>Labor</th>
+                                            <th>Responsable</th>
+                                            <th>Estado</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for salida, explosivo in salidas %}
+                                            {% set es_eliminado = salida.observaciones and 'ELIMINADO:' in salida.observaciones %}
+                                            <tr class="{{ 'table-secondary' if es_eliminado }}">
+                                                <td>{{ salida.id }}</td>
+                                                <td>
+                                                    <strong>{{ explosivo.codigo }}</strong><br>
+                                                    <small class="text-muted">{{ explosivo.descripcion }}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="fw-bold">{{ "%.2f"|format(salida.cantidad) }}</span> {{ explosivo.unidad }}
+                                                </td>
+                                                <td>
+                                                    {{ salida.fecha_salida.strftime('%d/%m/%Y') }}<br>
+                                                    <small class="text-muted">{{ salida.fecha_salida.strftime('%H:%M') }}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-{{ 'primary' if salida.guardia == 'dia' else 'dark' }}">
+                                                        {{ salida.guardia.title() }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ salida.labor or '-' }}</td>
+                                                <td>{{ salida.responsable or '-' }}</td>
+                                                <td>
+                                                    {% if es_eliminado %}
+                                                        <span class="badge bg-secondary">Eliminado</span>
+                                                    {% else %}
+                                                        <span class="badge bg-success">Activo</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if not es_eliminado %}
+                                                        <div class="btn-group" role="group">
+                                                            <a href="{{ url_for('editar_salida', salida_id=salida.id) }}" 
+                                                               class="btn btn-sm btn-warning" title="Editar">
+                                                                <i class="fas fa-edit"></i>
+                                                            </a>
+                                                            <button class="btn btn-sm btn-danger" 
+                                                                    onclick="eliminarSalida('{{ salida.id }}')" title="Eliminar">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    {% else %}
+                                                        <span class="text-muted">-</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">No se encontraron salidas</h5>
+                                <p class="text-muted">Ajusta los filtros para mostrar más resultados</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Información:</strong> Se muestran máximo 100 registros. 
+                    Usa los filtros para encontrar registros específicos. 
+                    Los registros eliminados aparecen en gris y no se pueden editar.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmación -->
+    <div class="modal fade" id="modalConfirmacion" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Estás seguro de que deseas eliminar esta salida?</p>
+                    <p class="text-danger"><strong>Esta acción no se puede deshacer.</strong></p>
+                    <p class="small text-muted">El registro se marcará como eliminado pero se conservará en el historial.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="confirmarEliminacion">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let salidaAEliminar = null;
+        let modalInstance = null;
+
+        // Inicializar modal cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', function() {
+            const modalElement = document.getElementById('modalConfirmacion');
+            modalInstance = new bootstrap.Modal(modalElement, {
+                backdrop: true,
+                keyboard: true,
+                focus: true
+            });
+            
+            console.log('Modal inicializado correctamente');
+            
+            // Event listener para el botón de confirmar eliminación
+            const confirmarBtn = document.getElementById('confirmarEliminacion');
+            if (confirmarBtn) {
+                confirmarBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Confirmando eliminación de salida:', salidaAEliminar);
+                    
+                    if (salidaAEliminar) {
+                        // Deshabilitar botón para evitar doble clic
+                        this.disabled = true;
+                        this.textContent = 'Eliminando...';
+                        
+                        fetch(`/eliminar/salida/${salidaAEliminar}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            // Rehabilitar botón
+                            confirmarBtn.disabled = false;
+                            confirmarBtn.textContent = 'Eliminar';
+                            
+                            if (data.success) {
+                                // Cerrar modal
+                                if (modalInstance) {
+                                    modalInstance.hide();
+                                }
+                                // Recargar página
+                                location.reload();
+                            } else {
+                                alert('Error eliminando la salida: ' + data.error);
+                            }
+                        })
+                        .catch(error => {
+                            // Rehabilitar botón
+                            confirmarBtn.disabled = false;
+                            confirmarBtn.textContent = 'Eliminar';
+                            
+                            console.error('Error:', error);
+                            alert('Error eliminando la salida: ' + error);
+                        });
+                    }
+                });
+            }
+        });
+
+        function eliminarSalida(salidaId) {
+            console.log('Intentando eliminar salida:', salidaId);
+            salidaAEliminar = parseInt(salidaId);
+            
+            if (modalInstance) {
+                modalInstance.show();
+            } else {
+                // Fallback si el modal no está inicializado
+                const modalElement = document.getElementById('modalConfirmacion');
+                const modal = new bootstrap.Modal(modalElement);
+                modal.show();
+            }
+        }
+
+        // Event listener para cerrar modal con escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modalInstance) {
+                modalInstance.hide();
+            }
+        });
+    </script>
+</body>
+</html>

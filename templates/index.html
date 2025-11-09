@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Sistema de Registro de Polvorín</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ fecha_actual.timestamp() }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- VERSIÓN LIMPIA DEL DASHBOARD - SIN FORMULARIOS INTEGRADOS -->
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="header-title">
+                    <h1><i class="fas fa-warehouse"></i> Sistema de Registro de Polvorín</h1>
+                    <p>Control de explosivos - Dashboard de navegación</p>
+                </div>
+                <div class="user-info">
+                    <span class="user-welcome">
+                        <i class="fas fa-user"></i> 
+                        Bienvenido, <strong>{{ usuario_actual.nombre_completo }}</strong>
+                    </span>
+                    {% if usuario_actual.cargo == 'administrador' %}
+                        <a href="{{ url_for('listar_usuarios') }}" class="btn-secondary btn-small">
+                            <i class="fas fa-users"></i> Usuarios
+                        </a>
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}" class="btn-secondary btn-small">
+                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard con tarjetas de acceso -->
+        <div class="dashboard-grid">
+            <div class="dashboard-card salida">
+                <div class="card-icon">
+                    <i class="fas fa-arrow-up"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Salida de Explosivos</h3>
+                    <p>Registrar salida de materiales hacia labores</p>
+                    <a href="{{ url_for('nueva_salida') }}" class="btn-primary">
+                        <i class="fas fa-plus"></i> Nueva Salida
+                    </a>
+                </div>
+            </div>
+
+            <div class="dashboard-card ingreso">
+                <div class="card-icon">
+                    <i class="fas fa-arrow-down"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Ingreso de Explosivos</h3>
+                    <p>Registrar ingreso de materiales al polvorín</p>
+                    <a href="{{ url_for('nuevo_ingreso') }}" class="btn-primary">
+                        <i class="fas fa-plus"></i> Nuevo Ingreso
+                    </a>
+                </div>
+            </div>
+
+            <div class="dashboard-card devolucion">
+                <div class="card-icon">
+                    <i class="fas fa-undo"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Devolución de Explosivos</h3>
+                    <p>Registrar devolución de materiales no utilizados</p>
+                    <a href="{{ url_for('nueva_devolucion') }}" class="btn-primary">
+                        <i class="fas fa-plus"></i> Nueva Devolución
+                    </a>
+                </div>
+            </div>
+
+            <div class="dashboard-card stock">
+                <div class="card-icon">
+                    <i class="fas fa-boxes"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Stock Actual</h3>
+                    <p>Consultar inventario actual de explosivos</p>
+                    <button onclick="cargarStock()" class="btn-primary">
+                        <i class="fas fa-eye"></i> Ver Stock
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-card historial">
+                <div class="card-icon">
+                    <i class="fas fa-history"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Historial de Movimientos</h3>
+                    <p>Consultar histórico de todas las operaciones</p>
+                    <button onclick="cargarHistorial()" class="btn-primary">
+                        <i class="fas fa-list"></i> Ver Historial
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-card stock-diario">
+                <div class="card-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Stock Diario por Turno</h3>
+                    <p>Ver stock inicial y final por turno (día/noche)</p>
+                    <a href="{{ url_for('ver_stock_diario') }}" class="btn-primary">
+                        <i class="fas fa-calendar-day"></i> Ver Stock Diario
+                    </a>
+                </div>
+            </div>
+
+            {% if usuario_actual.cargo == 'administrador' %}
+            <div class="dashboard-card edicion">
+                <div class="card-icon">
+                    <i class="fas fa-edit"></i>
+                </div>
+                <div class="card-content">
+                    <h3>Editar Datos</h3>
+                    <p>Corregir registros incorrectos (Solo administradores)</p>
+                    <a href="{{ url_for('panel_edicion') }}" class="btn-warning">
+                        <i class="fas fa-tools"></i> Panel de Edición
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+        <!-- Resumen del día actual -->
+        <div class="summary-section">
+            <h3><i class="fas fa-chart-line"></i> Resumen del Día</h3>
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-icon">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                    <div class="summary-content">
+                        <h4 id="salidaCount">0</h4>
+                        <p>Salidas</p>
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-icon">
+                        <i class="fas fa-arrow-down"></i>
+                    </div>
+                    <div class="summary-content">
+                        <h4 id="ingresoCount">0</h4>
+                        <p>Ingresos</p>
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-icon">
+                        <i class="fas fa-undo"></i>
+                    </div>
+                    <div class="summary-content">
+                        <h4 id="devolucionCount">0</h4>
+                        <p>Devoluciones</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para mostrar stock o historial -->
+        <div id="modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="cerrarModal()">&times;</span>
+                <h3 id="modalTitle"></h3>
+                <div id="modalBody"></div>
+            </div>
+        </div>
+
+        <!-- Notificaciones -->
+        <div id="notificacion" class="notificacion"></div>
+    </div>
+
+    <script>
+        // Cargar resumen del día al iniciar
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarResumenDia();
+        });
+
+        // Cargar resumen del día
+        async function cargarResumenDia() {
+            try {
+                const response = await fetch('/api/resumen-dia');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('salidaCount').textContent = data.salidas || 0;
+                    document.getElementById('ingresoCount').textContent = data.ingresos || 0;
+                    document.getElementById('devolucionCount').textContent = data.devoluciones || 0;
+                }
+            } catch (error) {
+                console.error('Error al cargar resumen del día:', error);
+            }
+        }
+
+        // Cargar stock actual
+        async function cargarStock() {
+            try {
+                const response = await fetch('/api/stock-actual');
+                if (response.ok) {
+                    const data = await response.json();
+                    mostrarStock(data);
+                } else {
+                    mostrarNotificacion('Error al cargar stock', 'error');
+                }
+            } catch (error) {
+                mostrarNotificacion('Error de conexión al cargar stock', 'error');
+            }
+        }
+
+        // Mostrar stock en modal
+        function mostrarStock(stockData) {
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalTitle.textContent = 'Stock Actual de Explosivos';
+            
+            let html = '<div class="stock-table">';
+            html += '<table>';
+            html += '<thead><tr><th>Código</th><th>Descripción</th><th>Stock</th><th>Unidad</th></tr></thead>';
+            html += '<tbody>';
+            
+            stockData.forEach(item => {
+                html += `<tr>
+                    <td>${item.codigo}</td>
+                    <td>${item.descripcion}</td>
+                    <td class="stock-cantidad">${item.stock_disponible}</td>
+                    <td>${item.unidad}</td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            modalBody.innerHTML = html;
+            
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        // Cargar historial
+        async function cargarHistorial() {
+            try {
+                console.log('Cargando historial...');
+                const response = await fetch('/api/historial-reciente', {
+                    method: 'GET',
+                    credentials: 'include',  // Incluir cookies de sesión
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Respuesta del servidor:', response.status, response.statusText);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Datos del historial:', data);
+                    
+                    if (data && data.length > 0) {
+                        mostrarHistorial(data);
+                    } else {
+                        mostrarNotificacion('No hay movimientos recientes para mostrar', 'info');
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.error('Error del servidor:', response.status, errorText);
+                    
+                    if (response.status === 401) {
+                        mostrarNotificacion('Sesión expirada. Recarga la página e inicia sesión nuevamente', 'error');
+                    } else {
+                        mostrarNotificacion(`Error al cargar historial (${response.status})`, 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('Error de conexión:', error);
+                mostrarNotificacion('Error de conexión al cargar historial', 'error');
+            }
+        }
+
+        // Mostrar historial en modal
+        function mostrarHistorial(historialData) {
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalTitle.textContent = 'Historial Reciente de Movimientos';
+            
+            let html = '<div class="historial-table">';
+            html += '<table>';
+            html += '<thead><tr><th>Fecha</th><th>Tipo</th><th>Explosivo</th><th>Cantidad</th><th>Destino/Origen</th></tr></thead>';
+            html += '<tbody>';
+            
+            historialData.forEach(item => {
+                const tipoClass = item.tipo === 'salida' ? 'tipo-salida' : 
+                                 item.tipo === 'ingreso' ? 'tipo-ingreso' : 'tipo-devolucion';
+                                 
+                html += `<tr>
+                    <td>${item.fecha}</td>
+                    <td><span class="tipo-badge ${tipoClass}">${item.tipo}</span></td>
+                    <td>${item.explosivo}</td>
+                    <td>${item.cantidad} ${item.unidad}</td>
+                    <td>${item.destino}</td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            modalBody.innerHTML = html;
+            
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        // Cerrar modal
+        function cerrarModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Mostrar notificación
+        function mostrarNotificacion(mensaje, tipo) {
+            const notificacion = document.getElementById('notificacion');
+            notificacion.textContent = mensaje;
+            notificacion.className = `notificacion ${tipo}`;
+            notificacion.style.display = 'block';
+            
+            setTimeout(() => {
+                notificacion.style.display = 'none';
+            }, 5000);
+        }
+
+        // Cerrar modal al hacer clic fuera
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+    
+    <style>
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .user-welcome {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .user-welcome strong {
+            color: #333;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .user-info {
+                justify-content: center;
+            }
+        }
+    </style>
+    
+    <!-- ARCHIVO 100% LIMPIO - SIN FORMULARIOS NI SCRIPT.JS EXTERNO -->
+</body>
+</html>

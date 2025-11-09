@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Usuario - Sistema de Polvorín</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-user-plus"></i> Crear Nuevo Usuario</h1>
+            <div class="user-info">
+                <span>Bienvenido, <strong>{{ session.nombre_completo }}</strong></span>
+                <a href="{{ url_for('logout') }}" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                </a>
+            </div>
+        </header>
+
+        <nav class="breadcrumb">
+            <a href="{{ url_for('index') }}">
+                <i class="fas fa-home"></i> Inicio
+            </a>
+            <span class="separator">></span>
+            <a href="{{ url_for('listar_usuarios') }}">Usuarios</a>
+            <span class="separator">></span>
+            <span class="current">Nuevo Usuario</span>
+        </nav>
+
+        <div class="form-container">
+            <form id="formUsuario" method="POST">
+                <div class="form-section">
+                    <h3><i class="fas fa-user"></i> Información del Usuario</h3>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="username">
+                                <i class="fas fa-at"></i> Nombre de Usuario *
+                            </label>
+                            <input type="text" 
+                                   id="username" 
+                                   name="username" 
+                                   class="form-control" 
+                                   placeholder="usuario123"
+                                   required>
+                            <small class="help-text">Solo letras, números y guiones bajos</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">
+                                <i class="fas fa-lock"></i> Contraseña *
+                            </label>
+                            <input type="password" 
+                                   id="password" 
+                                   name="password" 
+                                   class="form-control" 
+                                   placeholder="Mínimo 6 caracteres"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="nombre_completo">
+                                <i class="fas fa-id-card"></i> Nombre Completo *
+                            </label>
+                            <input type="text" 
+                                   id="nombre_completo" 
+                                   name="nombre_completo" 
+                                   class="form-control" 
+                                   placeholder="Juan Pérez García"
+                                   required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cargo">
+                                <i class="fas fa-briefcase"></i> Cargo *
+                            </label>
+                            <input type="text" 
+                                   id="cargo" 
+                                   name="cargo" 
+                                   class="form-control" 
+                                   placeholder="Ej: Encargado de Polvorín, Supervisor de Turnos, etc."
+                                   required>
+                            <small class="help-text">
+                                Puesto de trabajo o función del usuario en la empresa
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="nivel">
+                                <i class="fas fa-shield-alt"></i> Nivel de Acceso *
+                            </label>
+                            <select id="nivel" name="nivel" class="form-control" required>
+                                <option value="">Seleccione un nivel de acceso...</option>
+                                {% if niveles_acceso %}
+                                    {% for nivel in niveles_acceso %}
+                                    <option value="{{ nivel.id }}">
+                                        Nivel {{ nivel.id }} - {{ nivel.nombre }}
+                                    </option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="1">Nivel 1 - Básico</option>
+                                    <option value="2">Nivel 2 - Intermedio</option>
+                                    <option value="3">Nivel 3 - Avanzado</option>
+                                    <option value="4">Nivel 4 - Administrador</option>
+                                {% endif %}
+                            </select>
+                            <small class="help-text">
+                                <strong>Niveles de acceso:</strong><br>
+                                • <strong>Básico:</strong> Solo lectura (ver stocks, reportes básicos)<br>
+                                • <strong>Intermedio:</strong> Registrar movimientos (ingresos, salidas, devoluciones)<br>
+                                • <strong>Avanzado:</strong> Editar registros, gestionar labores<br>
+                                • <strong>Administrador:</strong> Acceso completo al sistema
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="nivel-info" id="nivelInfo" style="display: none;">
+                                <h4><i class="fas fa-info-circle"></i> Permisos del Nivel Seleccionado</h4>
+                                <p id="nivelDescripcion"></p>
+                                <div id="nivelPermisos"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save"></i> Crear Usuario
+                    </button>
+                    <a href="{{ url_for('listar_usuarios') }}" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notificaciones -->
+    <div id="notificacion" class="notificacion"></div>
+
+    <style>
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .breadcrumb {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .breadcrumb a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        
+        .separator {
+            margin: 0 10px;
+            color: #6c757d;
+        }
+        
+        .current {
+            color: #6c757d;
+        }
+        
+        .form-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .form-section {
+            margin-bottom: 30px;
+        }
+        
+        .form-section h3 {
+            color: #495057;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 5px;
+            color: #495057;
+            font-weight: 500;
+        }
+        
+        .form-control {
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        .help-text {
+            margin-top: 5px;
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .notificacion {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .notificacion.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .notificacion.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .nivel-info {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        
+        .nivel-info h4 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .nivel-info.nivel-1 { border-color: #6c757d; }
+        .nivel-info.nivel-2 { border-color: #17a2b8; }
+        .nivel-info.nivel-3 { border-color: #ffc107; }
+        .nivel-info.nivel-4 { border-color: #dc3545; }
+        
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+
+    <script>
+        // Información de niveles de acceso
+        const nivelesInfo = {
+            1: {
+                nombre: 'Básico',
+                descripcion: 'Usuario básico con acceso de solo lectura',
+                permisos: [
+                    '✅ Ver stocks de explosivos',
+                    '✅ Consultar reportes básicos',
+                    '❌ Registrar movimientos',
+                    '❌ Editar registros',
+                    '❌ Gestionar usuarios'
+                ]
+            },
+            2: {
+                nombre: 'Intermedio',
+                descripcion: 'Usuario operativo con permisos de registro',
+                permisos: [
+                    '✅ Ver stocks de explosivos',
+                    '✅ Consultar reportes',
+                    '✅ Registrar ingresos, salidas y devoluciones',
+                    '❌ Editar registros existentes',
+                    '❌ Gestionar usuarios'
+                ]
+            },
+            3: {
+                nombre: 'Avanzado',
+                descripcion: 'Supervisor con permisos extendidos',
+                permisos: [
+                    '✅ Todos los permisos de nivel intermedio',
+                    '✅ Editar registros existentes',
+                    '✅ Gestionar labores y tipos de actividad',
+                    '✅ Supervisar operaciones',
+                    '❌ Gestionar usuarios del sistema'
+                ]
+            },
+            4: {
+                nombre: 'Administrador',
+                descripción: 'Acceso completo al sistema',
+                permisos: [
+                    '✅ Acceso completo a todas las funciones',
+                    '✅ Gestionar usuarios del sistema',
+                    '✅ Configuración del sistema',
+                    '✅ Acceso a reportes avanzados',
+                    '✅ Administración completa'
+                ]
+            }
+        };
+
+        // Manejar cambio de nivel de acceso
+        document.getElementById('nivel').addEventListener('change', function() {
+            const nivelSeleccionado = this.value;
+            const nivelInfo = document.getElementById('nivelInfo');
+            const nivelDescripcion = document.getElementById('nivelDescripcion');
+            const nivelPermisos = document.getElementById('nivelPermisos');
+
+            if (nivelSeleccionado && nivelesInfo[nivelSeleccionado]) {
+                const info = nivelesInfo[nivelSeleccionado];
+                
+                nivelDescripcion.textContent = info.descripcion;
+                nivelPermisos.innerHTML = '<ul>' + 
+                    info.permisos.map(permiso => `<li>${permiso}</li>`).join('') + 
+                    '</ul>';
+                
+                nivelInfo.className = 'nivel-info nivel-' + nivelSeleccionado;
+                nivelInfo.style.display = 'block';
+            } else {
+                nivelInfo.style.display = 'none';
+            }
+        });
+
+        // Formulario de usuario
+        document.getElementById('formUsuario').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('{{ url_for("nuevo_usuario") }}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    mostrarNotificacion(result.success, 'success');
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("listar_usuarios") }}';
+                    }, 2000);
+                } else {
+                    mostrarNotificacion(result.error, 'error');
+                }
+            } catch (error) {
+                mostrarNotificacion('Error de conexión', 'error');
+            }
+        });
+        
+        function mostrarNotificacion(mensaje, tipo) {
+            const notificacion = document.getElementById('notificacion');
+            notificacion.textContent = mensaje;
+            notificacion.className = `notificacion ${tipo}`;
+            notificacion.style.display = 'block';
+            
+            setTimeout(() => {
+                notificacion.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

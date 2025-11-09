@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Devolución - Sistema de Polvorín</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Estilos para el modal */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #f39c12, #d68910);
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h4 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .close {
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .close:hover {
+            opacity: 1;
+        }
+
+        .confirmacion-item {
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .confirmacion-item:last-child {
+            border-bottom: none;
+        }
+
+        .confirmacion-explosivos {
+            margin-top: 8px;
+            padding-left: 15px;
+        }
+
+        .confirmacion-explosivo {
+            margin: 4px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-undo"></i> Nueva Devolución de Explosivos</h1>
+            <a href="{{ url_for('index') }}" class="btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
+            </a>
+        </header>
+
+        <form id="devolucionForm" class="form-card" method="POST">
+            <!-- Información general de la devolución -->
+            <div class="salida-header">
+                <h3><i class="fas fa-info-circle"></i> Información General</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fecha_devolucion">Fecha de devolución:</label>
+                        <input type="date" id="fecha_devolucion" name="fecha_devolucion" required 
+                               value="{{ fecha_actual }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="labor_origen">Labor de origen:</label>
+                        <input type="text" id="labor_origen" name="labor_origen" required 
+                               placeholder="Buscar labor de origen..." 
+                               autocomplete="off"
+                               list="labores-origen-disponibles">
+                        <datalist id="labores-origen-disponibles">
+                            <!-- Las opciones se cargarán dinámicamente -->
+                        </datalist>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-search me-1"></i>Comienza a escribir para buscar labores disponibles
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="supervisor_responsable">Supervisor responsable:</label>
+                        <input type="text" id="supervisor_responsable" name="supervisor_responsable" required 
+                               placeholder="Nombre del supervisor que autoriza la devolución">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="motivo_devolucion">Motivo de devolución:</label>
+                        <select id="motivo_devolucion" name="motivo_devolucion" required>
+                            <option value="">Seleccionar motivo</option>
+                            <option value="sobrante">Material sobrante</option>
+                            <option value="cambio_plan">Cambio de plan de voladura</option>
+                            <option value="defectuoso">Material defectuoso</option>
+                            <option value="vencimiento">Próximo a vencer</option>
+                            <option value="otro">Otro motivo</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="recibido_por">Recibido por:</label>
+                        <input type="text" id="recibido_por" name="recibido_por" readonly 
+                               value="{{ usuario_actual.nombre_completo }}"
+                               style="background-color: #f5f5f5; cursor: not-allowed;">
+                        <small class="form-text text-muted">Este campo se llena automáticamente con su usuario</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="turno">Turno:</label>
+                        <select id="turno" name="turno" required>
+                            <option value="">Seleccionar turno</option>
+                            <option value="dia" {{ 'selected' if guardia_actual == 'dia' else '' }}>DIA</option>
+                            <option value="noche" {{ 'selected' if guardia_actual == 'noche' else '' }}>NOCHE</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="numero_vale">Número de vale (opcional):</label>
+                        <input type="text" id="numero_vale" name="numero_vale" 
+                               placeholder="Número de vale o documento de referencia">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="observaciones">Observaciones (opcional):</label>
+                        <textarea id="observaciones" name="observaciones" rows="2" 
+                                  placeholder="Detalles adicionales sobre la devolución..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de explosivos -->
+            <div class="explosivos-section">
+                <h3><i class="fas fa-list"></i> Explosivos a Devolver</h3>
+                <p class="help-text">Ingrese la cantidad para cada explosivo que desea devolver al polvorín. Los campos vacíos o con valor 0 no se incluirán.</p>
+                
+                <div class="explosivos-container">
+                    <div class="explosivos-header">
+                        <div class="col-descripcion">Tipo de Explosivo</div>
+                        <div class="col-codigo">Código</div>
+                        <div class="col-stock">Stock Actual</div>
+                        <div class="col-cantidad">Cantidad a Devolver</div>
+                        <div class="col-unidad">Unidad</div>
+                    </div>
+                    
+                    <div id="explosivos-list" class="explosivos-list">
+                        {% for explosivo in explosivos %}
+                        <div class="explosivo-item" data-codigo="{{ explosivo.codigo }}" data-unidad="{{ explosivo.unidad }}">
+                            <div class="col-descripcion">
+                                <strong>{{ explosivo.descripcion }}</strong>
+                            </div>
+                            <div class="col-codigo">
+                                <span class="codigo-badge">{{ explosivo.codigo }}</span>
+                            </div>
+                            <div class="col-stock">
+                                <span class="stock-info">
+                                    {{ "%.1f"|format(stock_actual.get(explosivo.codigo, 0)) }}
+                                </span>
+                            </div>
+                            <div class="col-cantidad">
+                                <input type="number" 
+                                       name="cantidad_{{ explosivo.codigo }}" 
+                                       id="cantidad-{{ explosivo.codigo }}"
+                                       min="0" 
+                                       step="0.1" 
+                                       value=""
+                                       class="cantidad-input"
+                                       placeholder="0.0">
+                            </div>
+                            <div class="col-unidad">
+                                <span class="unidad-badge">{{ explosivo.unidad }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="form-actions">
+                <button type="submit" class="btn-primary" id="btnRegistrar">
+                    <i class="fas fa-save"></i> Registrar Devolución
+                </button>
+                <button type="button" class="btn-secondary" onclick="limpiarCantidades()">
+                    <i class="fas fa-broom"></i> Limpiar Cantidades
+                </button>
+                <button type="button" class="btn-info" onclick="calcularTotal()">
+                    <i class="fas fa-calculator"></i> Calcular Total
+                </button>
+            </div>
+
+            <!-- Resumen de la devolución -->
+            <div id="resumen-devolucion" class="resumen-card" style="display: none;">
+                <h4><i class="fas fa-clipboard-list"></i> Resumen de la Devolución</h4>
+                <div id="resumen-content"></div>
+            </div>
+        </form>
+
+        <!-- Modal de Confirmación -->
+        <div id="modalConfirmacion" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fas fa-question-circle"></i> Confirmar Registro de Devolución</h4>
+                    <span class="close" onclick="cerrarModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p><strong>¿Está seguro de que desea registrar esta devolución con los siguientes datos?</strong></p>
+                    <div id="confirmacionResumen">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal()">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn-primary" onclick="confirmarRegistro()">
+                        <i class="fas fa-check"></i> Confirmar y Registrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="notificacion" class="notificacion"></div>
+    </div>
+
+    <script>
+        let enviandoFormulario = false;
+        
+        // Variables para el modal de confirmación
+        let datosFormulario = null;
+        let explosivosSeleccionados = [];
+
+        document.getElementById('devolucionForm').addEventListener('submit', async function(e) {
+            console.log('🎯 EVENT SUBMIT EJECUTADO en nueva_devolucion');
+            e.preventDefault();
+            
+            if (enviandoFormulario) {
+                return false;
+            }
+
+            const notificacion = document.getElementById('notificacion');
+            
+            // Validar que hay al menos un explosivo con cantidad
+            const cantidades = document.querySelectorAll('.cantidad-input');
+            let hayExplosivos = false;
+            
+            cantidades.forEach(input => {
+                if (input.value && parseFloat(input.value) > 0) {
+                    hayExplosivos = true;
+                }
+            });
+            
+            if (!hayExplosivos) {
+                mostrarNotificacion('Debe especificar al menos un explosivo para devolver', 'error');
+                return false;
+            }
+
+            // Preparar FormData
+            const formData = new FormData(this);
+            
+            // Recopilar explosivos con cantidad > 0 para el resumen
+            const explosivosParaDevolucion = [];
+            document.querySelectorAll('.explosivo-item').forEach(item => {
+                const id = item.dataset.id;
+                const cantidadInput = document.getElementById(`cantidad-${id}`);
+                const cantidad = parseFloat(cantidadInput.value) || 0;
+                
+                if (cantidad > 0) {
+                    explosivosParaDevolucion.push({
+                        explosivo_id: id,
+                        cantidad: cantidad
+                    });
+                }
+            });
+            
+            // Mostrar modal de confirmación en lugar de enviar directamente
+            console.log('🔔 Llamando a mostrarConfirmacion con', explosivosParaDevolucion.length, 'explosivos');
+            mostrarConfirmacion(formData, explosivosParaDevolucion);
+        });
+
+        function mostrarNotificacion(mensaje, tipo) {
+            const notificacion = document.getElementById('notificacion');
+            notificacion.textContent = mensaje;
+            notificacion.className = `notificacion ${tipo}`;
+            notificacion.style.display = 'block';
+            
+            // Auto-ocultar después de 20 segundos para todos los tipos
+            setTimeout(() => {
+                notificacion.style.display = 'none';
+            }, 20000);
+        }
+
+        function restaurarBoton() {
+            const btnRegistrar = document.getElementById('btnRegistrar');
+            enviandoFormulario = false;
+            btnRegistrar.disabled = false;
+            btnRegistrar.innerHTML = '<i class="fas fa-save"></i> Registrar Devolución';
+            btnRegistrar.classList.remove('btn-secondary', 'btn-success');
+            btnRegistrar.classList.add('btn-primary');
+        }
+
+        function limpiarFormulario() {
+            // Limpiar todos los campos excepto fecha, turno y recibido_por (automáticos)
+            document.querySelectorAll('input[type="text"], textarea, input[type="number"]').forEach(input => {
+                if (input.id !== 'fecha_devolucion' && input.id !== 'recibido_por') {
+                    input.value = '';
+                }
+            });
+            
+            // Resetear selects excepto turno
+            document.querySelectorAll('select').forEach(select => {
+                if (select.id !== 'turno') {
+                    select.selectedIndex = 0;
+                }
+            });
+            
+            // Ocultar notificación y resumen
+            document.getElementById('notificacion').style.display = 'none';
+            document.getElementById('resumen-devolucion').style.display = 'none';
+        }
+
+        function limpiarCantidades() {
+            document.querySelectorAll('.cantidad-input').forEach(input => {
+                input.value = '';
+            });
+        }
+
+        function calcularTotal() {
+            const cantidades = document.querySelectorAll('.cantidad-input');
+            let totalItems = 0;
+            let itemsConCantidad = [];
+            
+            cantidades.forEach(input => {
+                if (input.value && parseFloat(input.value) > 0) {
+                    const explosivoItem = input.closest('.explosivo-item');
+                    const codigo = explosivoItem.dataset.codigo;
+                    const unidad = explosivoItem.dataset.unidad;
+                    const descripcion = explosivoItem.querySelector('.col-descripcion strong').textContent;
+                    const cantidad = parseFloat(input.value);
+                    
+                    totalItems++;
+                    itemsConCantidad.push({
+                        codigo,
+                        descripcion,
+                        cantidad,
+                        unidad
+                    });
+                }
+            });
+            
+            const resumenDiv = document.getElementById('resumen-devolucion');
+            const resumenContent = document.getElementById('resumen-content');
+            
+            if (itemsConCantidad.length > 0) {
+                let html = `<p><strong>Total de tipos de explosivos: ${totalItems}</strong></p><ul>`;
+                itemsConCantidad.forEach(item => {
+                    html += `<li>${item.codigo} - ${item.descripcion}: ${item.cantidad} ${item.unidad}</li>`;
+                });
+                html += '</ul>';
+                
+                resumenContent.innerHTML = html;
+                resumenDiv.style.display = 'block';
+            } else {
+                resumenDiv.style.display = 'none';
+                mostrarNotificacion('No hay explosivos con cantidad especificada', 'warning');
+            }
+        }
+
+        // Autocomplete para labores de origen
+        document.getElementById('labor_origen').addEventListener('input', function() {
+            const termino = this.value;
+            
+            if (termino.length >= 2) {
+                fetch(`/api/buscar-labores?q=${encodeURIComponent(termino)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const datalist = document.getElementById('labores-origen-disponibles');
+                        datalist.innerHTML = '';
+                        
+                        data.labores.forEach(labor => {
+                            const option = document.createElement('option');
+                            option.value = labor.nombre;
+                            option.textContent = labor.nombre;
+                            datalist.appendChild(option);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error cargando labores:', error);
+                    });
+            }
+        });
+
+        // Cargar labores iniciales al cargar la página
+        window.addEventListener('load', function() {
+            fetch('/api/buscar-labores?q=')
+                .then(response => response.json())
+                .then(data => {
+                    const datalist = document.getElementById('labores-origen-disponibles');
+                    datalist.innerHTML = '';
+                    
+                    data.labores.forEach(labor => {
+                        const option = document.createElement('option');
+                        option.value = labor.nombre;
+                        option.textContent = labor.nombre;
+                        datalist.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error cargando labores iniciales:', error);
+                });
+        });
+
+        // ========== FUNCIONES PARA EL MODAL DE CONFIRMACIÓN ==========
+
+        function cerrarModal() {
+            document.getElementById('modalConfirmacion').style.display = 'none';
+        }
+
+        function mostrarConfirmacion(formData, explosivos) {
+            console.log('📋 mostrarConfirmacion (devolución) ejecutada con', explosivos.length, 'explosivos');
+            datosFormulario = formData;
+            explosivosSeleccionados = explosivos;
+
+            // Generar resumen para confirmación
+            let resumenHTML = `
+                <div class="confirmacion-item">
+                    <strong>Fecha:</strong> ${document.getElementById('fecha_devolucion').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Labor de origen:</strong> ${document.getElementById('labor_origen').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Supervisor responsable:</strong> ${document.getElementById('supervisor_responsable').value}
+                </div>
+            `;
+
+            if (document.getElementById('observaciones').value.trim()) {
+                resumenHTML += `
+                    <div class="confirmacion-item">
+                        <strong>Observaciones:</strong> ${document.getElementById('observaciones').value}
+                    </div>
+                `;
+            }
+
+            resumenHTML += `
+                <div class="confirmacion-item">
+                    <strong>Explosivos a devolver:</strong>
+                    <div class="confirmacion-explosivos">
+            `;
+
+            let totalExplosivos = 0;
+            explosivos.forEach(exp => {
+                const explosivo = document.querySelector(`.explosivo-item[data-id="${exp.explosivo_id}"]`);
+                const nombre = explosivo.querySelector('.col-descripcion strong').textContent;
+                const unidad = explosivo.querySelector('.col-unidad .unidad-badge').textContent;
+                
+                resumenHTML += `
+                    <div class="confirmacion-explosivo">
+                        <strong>${nombre}</strong>: ${exp.cantidad} ${unidad}
+                    </div>
+                `;
+                totalExplosivos += parseFloat(exp.cantidad);
+            });
+
+            resumenHTML += `
+                    </div>
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Total de explosivos:</strong> ${explosivos.length} tipos diferentes
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Cantidad total:</strong> ${totalExplosivos.toFixed(2)} unidades
+                </div>
+            `;
+
+            document.getElementById('confirmacionResumen').innerHTML = resumenHTML;
+            document.getElementById('modalConfirmacion').style.display = 'block';
+        }
+
+        // Función para enviar el formulario después de confirmación
+        async function confirmarRegistro() {
+            console.log('✅ confirmarRegistro (devolución) ejecutada');
+            cerrarModal();
+            
+            const notificacion = document.getElementById('notificacion');
+            const btnRegistrar = document.getElementById('btnRegistrar');
+            
+            console.log('🔘 Botón encontrado:', !!btnRegistrar);
+            
+            // PROTECCIÓN ANTI-DUPLICADOS: Verificar si ya se está procesando
+            if (btnRegistrar && btnRegistrar.disabled) {
+                console.log('⚠️ Botón ya está deshabilitado, saliendo');
+                return; // Ya se está procesando
+            }
+            
+            // Deshabilitar botón y cambiar texto
+            if (btnRegistrar) {
+                console.log('🔄 Cambiando botón a estado procesando');
+                btnRegistrar.disabled = true;
+                btnRegistrar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            }
+            
+            try {
+                const response = await fetch('/devoluciones/nueva', {
+                    method: 'POST',
+                    body: datosFormulario
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    mostrarNotificacion('✅ Devolución registrada correctamente. Todos los campos han sido limpiados.', 'success');
+                    // Limpiar formulario completo
+                    limpiarFormulario();
+                } else {
+                    mostrarNotificacion(result.error || 'Error al registrar devolución', 'error');
+                }
+                
+            } catch (error) {
+                mostrarNotificacion('Error de conexión', 'error');
+            } finally {
+                // Rehabilitar botón y restaurar texto original
+                if (btnRegistrar) {
+                    btnRegistrar.disabled = false;
+                    btnRegistrar.innerHTML = '<i class="fas fa-save"></i> Registrar Devolución';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

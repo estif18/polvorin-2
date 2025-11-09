@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Salida - Sistema de Polvorín</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .autocomplete-container {
+            position: relative;
+        }
+        
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .autocomplete-option {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        
+        .autocomplete-option:hover,
+        .autocomplete-option.highlighted {
+            background-color: #f8f9fa;
+        }
+        
+        .autocomplete-option:last-child {
+            border-bottom: none;
+        }
+
+        /* Estilos para el modal */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h4 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .close {
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .close:hover {
+            opacity: 1;
+        }
+
+        .confirmacion-item {
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .confirmacion-item:last-child {
+            border-bottom: none;
+        }
+
+        .confirmacion-explosivos {
+            margin-top: 8px;
+            padding-left: 15px;
+        }
+
+        .confirmacion-explosivo {
+            margin: 4px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-arrow-up"></i> Nueva Salida de Explosivos</h1>
+            <a href="{{ url_for('index') }}" class="btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
+            </a>
+        </header>
+
+        <form id="salidaForm" class="form-card" method="POST">
+            <!-- Información general de la salida -->
+            <div class="salida-header">
+                <h3><i class="fas fa-info-circle"></i> Información General</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fecha_salida">Fecha de salida:</label>
+                        <input type="date" id="fecha_salida" name="fecha_salida" required 
+                               value="{{ fecha_actual.strftime('%Y-%m-%d') if fecha_actual else '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="labor">Labor de destino:</label>
+                        <div class="autocomplete-container position-relative">
+                            <input type="text" id="labor" name="labor" required 
+                                   placeholder="Buscar labor..." 
+                                   autocomplete="off"
+                                   class="form-control">
+                            <div id="labores-dropdown" class="autocomplete-dropdown" style="display: none;">
+                                <!-- Las opciones se cargarán dinámicamente -->
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-search me-1"></i>Comienza a escribir para buscar labores disponibles
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="tipo_actividad">Tipo de actividad:</label>
+                        <div class="autocomplete-container position-relative">
+                            <input type="text" id="tipo_actividad" name="tipo_actividad" required 
+                                   placeholder="Buscar tipo de actividad..." 
+                                   autocomplete="off"
+                                   class="form-control">
+                            <div id="tipos-actividad-dropdown" class="autocomplete-dropdown" style="display: none;">
+                                <!-- Las opciones se cargarán dinámicamente -->
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-search me-1"></i>Ej: Breasting, Realce, Sub nivel, Desquinche Mineral, Avance
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="responsable">Trabajador que recibe:</label>
+                        <input type="text" id="responsable" name="responsable" required 
+                               placeholder="Nombre del trabajador que recibe los explosivos">
+                        <small class="form-text text-muted">Trabajador de mina que recibirá los explosivos</small>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="autorizado_por">Autorizado por:</label>
+                        <input type="text" id="autorizado_por" name="autorizado_por" readonly 
+                               value="{{ usuario_actual.nombre_completo }}"
+                               style="background-color: #f5f5f5; cursor: not-allowed;">
+                        <small class="form-text text-muted">Este campo se llena automáticamente con su usuario</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="turno">Turno:</label>
+                        <select id="turno" name="turno" required>
+                            <option value="">Seleccionar turno</option>
+                            <option value="DIA" {{ 'selected' if guardia_actual == 'dia' else '' }}>DIA</option>
+                            <option value="NOCHE" {{ 'selected' if guardia_actual == 'noche' else '' }}>NOCHE</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="observaciones">Observaciones (opcional):</label>
+                        <textarea id="observaciones" name="observaciones" rows="2" 
+                                  placeholder="Detalles adicionales..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de explosivos -->
+            <div class="explosivos-section">
+                <h3><i class="fas fa-list"></i> Seleccionar Explosivos</h3>
+                <p class="help-text">Ingrese la cantidad para cada explosivo que desea incluir en la salida. Los campos vacíos o con valor 0 no se incluirán.</p>
+                
+                <div class="explosivos-container">
+                    <div class="explosivos-header">
+                        <div class="col-descripcion">Tipo de Explosivo</div>
+                        <div class="col-codigo">Código</div>
+                        <div class="col-stock">Stock Disponible</div>
+                        <div class="col-cantidad">Cantidad a Sacar</div>
+                        <div class="col-unidad">Unidad</div>
+                    </div>
+                    
+                    <div id="explosivos-list" class="explosivos-list">
+                        {% for explosivo in explosivos %}
+                        <div class="explosivo-item" data-id="{{ explosivo.id }}" data-codigo="{{ explosivo.codigo }}" data-unidad="{{ explosivo.unidad }}">
+                            <div class="col-descripcion">
+                                <strong>{{ explosivo.descripcion }}</strong>
+                            </div>
+                            <div class="col-codigo">
+                                <span class="codigo-badge">{{ explosivo.codigo }}</span>
+                            </div>
+                            <div class="col-stock">
+                                <span class="stock-info" id="stock-{{ explosivo.id }}">
+                                    <i class="fas fa-spinner fa-spin"></i> Cargando...
+                                </span>
+                            </div>
+                            <div class="col-cantidad">
+                                <input type="number" 
+                                       name="cantidad_{{ explosivo.id }}" 
+                                       id="cantidad-{{ explosivo.id }}"
+                                       min="0" 
+                                       step="1" 
+                                       value="0"
+                                       class="cantidad-input"
+                                       placeholder="0"
+                                       data-max="0">
+                            </div>
+                            <div class="col-unidad">
+                                <span class="unidad-badge">{{ explosivo.unidad }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="form-actions">
+                <button type="submit" class="btn-primary" id="btnRegistrar">
+                    <i class="fas fa-save"></i> Registrar Salida
+                </button>
+                <button type="button" class="btn-secondary" onclick="limpiarCantidades()">
+                    <i class="fas fa-broom"></i> Limpiar Cantidades
+                </button>
+                <button type="button" class="btn-info" onclick="calcularTotal()">
+                    <i class="fas fa-calculator"></i> Calcular Total
+                </button>
+            </div>
+
+            <!-- Resumen de la salida -->
+            <div id="resumen-salida" class="resumen-card" style="display: none;">
+                <h4><i class="fas fa-clipboard-list"></i> Resumen de la Salida</h4>
+                <div id="resumen-content"></div>
+            </div>
+        </form>
+
+        <!-- Modal de Confirmación -->
+        <div id="modalConfirmacion" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fas fa-question-circle"></i> Confirmar Registro de Salida</h4>
+                    <span class="close" onclick="cerrarModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p><strong>¿Está seguro de que desea registrar esta salida con los siguientes datos?</strong></p>
+                    <div id="confirmacionResumen">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal()">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn-primary" onclick="confirmarRegistro()">
+                        <i class="fas fa-check"></i> Confirmar y Registrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="notificacion" class="notificacion"></div>
+    </div>
+
+    <script>
+        let explosivos = [];
+        let stockData = {};
+        
+        // Variables para el modal de confirmación
+        let datosFormulario = null;
+        let explosivosSeleccionados = [];
+
+        // Cargar stock de todos los explosivos al cargar la página
+        document.addEventListener('DOMContentLoaded', async function() {
+            await cargarStockTodos();
+            configurarEventos();
+        });
+
+        // OPTIMIZADO: Cargar stock de todos los explosivos con una sola consulta
+        async function cargarStockTodos() {
+            const explosivosItems = document.querySelectorAll('.explosivo-item');
+            
+            // Recopilar todos los IDs de explosivos
+            const ids = Array.from(explosivosItems).map(item => item.dataset.id);
+            
+            try {
+                // Una sola consulta para todos los explosivos
+                const response = await fetch(`/api/stock-masivo?ids=${ids.join(',')}`);
+                
+                if (response.ok) {
+                    const stocksData = await response.json();
+                    
+                    // Actualizar cada elemento con los datos recibidos
+                    explosivosItems.forEach(item => {
+                        const id = item.dataset.id;
+                        const stockElement = document.getElementById(`stock-${id}`);
+                        const cantidadInput = document.getElementById(`cantidad-${id}`);
+                        
+                        if (stocksData[id]) {
+                            const data = stocksData[id];
+                            stockData[id] = {
+                                stock_disponible: data.stock_disponible,
+                                metodo: data.metodo
+                            };
+                            
+                            stockElement.innerHTML = `<span class="stock-disponible">${data.stock_disponible}</span>`;
+                            cantidadInput.setAttribute('max', data.stock_disponible);
+                            cantidadInput.dataset.max = data.stock_disponible;
+                        } else {
+                            stockElement.innerHTML = '<span class="stock-error">Sin datos</span>';
+                        }
+                    });
+                    
+                    console.log(`✅ Stock cargado para ${Object.keys(stocksData).length} explosivos (método optimizado)`);
+                } else {
+                    console.error('Error al cargar stock masivo, usando método individual...');
+                    await cargarStockTodosIndividual(); // Fallback
+                }
+            } catch (error) {
+                console.error('Error de conexión, usando método individual...', error);
+                await cargarStockTodosIndividual(); // Fallback
+            }
+        }
+
+        // Método original como fallback
+        async function cargarStockTodosIndividual() {
+            const explosivosItems = document.querySelectorAll('.explosivo-item');
+            
+            for (const item of explosivosItems) {
+                const id = item.dataset.id;
+                const stockElement = document.getElementById(`stock-${id}`);
+                
+                try {
+                    const response = await fetch(`/api/stock/${id}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        stockData[id] = data;
+                        stockElement.innerHTML = `<span class="stock-disponible">${data.stock_disponible}</span>`;
+                        
+                        // Configurar máximo en el input
+                        const cantidadInput = document.getElementById(`cantidad-${id}`);
+                        cantidadInput.setAttribute('max', data.stock_disponible);
+                        cantidadInput.dataset.max = data.stock_disponible;
+                    } else {
+                        stockElement.innerHTML = '<span class="stock-error">Error</span>';
+                    }
+                } catch (error) {
+                    stockElement.innerHTML = '<span class="stock-error">Sin conexión</span>';
+                }
+            }
+        }
+
+        // Configurar eventos
+        function configurarEventos() {
+            // Validación en tiempo real de cantidades
+            document.querySelectorAll('.cantidad-input').forEach(input => {
+                input.addEventListener('input', function() {
+                    validarCantidad(this);
+                    actualizarResumen();
+                });
+
+                input.addEventListener('blur', function() {
+                    if (this.value === '' || this.value < 0) {
+                        this.value = 0;
+                    }
+                });
+            });
+        }
+
+        // Validar cantidad contra stock disponible
+        function validarCantidad(input) {
+            const cantidad = parseInt(input.value) || 0;
+            const maxStock = parseInt(input.dataset.max) || 0;
+            
+            input.classList.remove('cantidad-error', 'cantidad-warning');
+            
+            if (cantidad > maxStock) {
+                input.classList.add('cantidad-error');
+                input.title = `Cantidad excede el stock disponible (${maxStock})`;
+            } else if (cantidad > maxStock * 0.8) {
+                input.classList.add('cantidad-warning');
+                input.title = `Advertencia: Cantidad alta respecto al stock disponible`;
+            } else {
+                input.title = '';
+            }
+        }
+
+        // Limpiar todas las cantidades
+        function limpiarCantidades() {
+            document.querySelectorAll('.cantidad-input').forEach(input => {
+                input.value = 0;
+                input.classList.remove('cantidad-error', 'cantidad-warning');
+            });
+            actualizarResumen();
+        }
+
+        // Limpiar formulario completo
+        function limpiarFormulario() {
+            // Limpiar campos del formulario excepto los que se llenan automáticamente
+            document.querySelectorAll('input[type="text"], input[type="number"], textarea, select').forEach(input => {
+                if (input.id !== 'fecha_salida' && input.id !== 'autorizado_por') {
+                    input.value = '';
+                }
+            });
+            
+            // Limpiar cantidades de explosivos
+            limpiarCantidades();
+            
+            // Ocultar resumen
+            document.getElementById('resumen-salida').style.display = 'none';
+        }
+
+        // Calcular y mostrar total
+        function calcularTotal() {
+            actualizarResumen();
+            document.getElementById('resumen-salida').style.display = 'block';
+            document.getElementById('resumen-salida').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Actualizar resumen
+        function actualizarResumen() {
+            const resumenContent = document.getElementById('resumen-content');
+            const items = [];
+            let totalItems = 0;
+
+            document.querySelectorAll('.explosivo-item').forEach(item => {
+                const id = item.dataset.id;
+                const codigo = item.dataset.codigo;
+                const unidad = item.dataset.unidad;
+                const descripcion = item.querySelector('.col-descripcion strong').textContent;
+                const cantidadInput = document.getElementById(`cantidad-${id}`);
+                const cantidad = parseInt(cantidadInput.value) || 0;
+
+                if (cantidad > 0) {
+                    items.push({
+                        codigo,
+                        descripcion,
+                        cantidad,
+                        unidad
+                    });
+                    totalItems++;
+                }
+            });
+
+            if (items.length === 0) {
+                resumenContent.innerHTML = '<p class="no-items">No hay explosivos seleccionados</p>';
+            } else {
+                let html = `<div class="resumen-items">`;
+                items.forEach(item => {
+                    html += `
+                        <div class="resumen-item">
+                            <span class="item-codigo">${item.codigo}</span>
+                            <span class="item-descripcion">${item.descripcion}</span>
+                            <span class="item-cantidad">${item.cantidad} ${item.unidad}</span>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                html += `<div class="resumen-total">Total de tipos de explosivos: <strong>${totalItems}</strong></div>`;
+                resumenContent.innerHTML = html;
+            }
+        }
+
+        // Manejar envío del formulario
+        document.getElementById('salidaForm').addEventListener('submit', async function(e) {
+            console.log('🎯 EVENT SUBMIT EJECUTADO en nueva_salida');
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const notificacion = document.getElementById('notificacion');
+            
+            // Datos generales
+            formData.append('fecha_salida', document.getElementById('fecha_salida').value);
+            formData.append('labor', document.getElementById('labor').value);
+            formData.append('tipo_actividad', document.getElementById('tipo_actividad').value);
+            formData.append('responsable', document.getElementById('responsable').value);
+            formData.append('autorizado_por', document.getElementById('autorizado_por').value);
+            formData.append('turno', document.getElementById('turno').value);
+            formData.append('observaciones', document.getElementById('observaciones').value);
+            
+            // Validaciones adicionales
+            const labor = document.getElementById('labor').value.trim();
+            const tipoActividad = document.getElementById('tipo_actividad').value.trim();
+            
+            if (!labor) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Debe especificar la labor de destino';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 5000);
+                return;
+            }
+            
+            if (!tipoActividad) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Debe especificar el tipo de actividad';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 5000);
+                return;
+            }
+            
+            // Recopilar explosivos con cantidad > 0
+            const explosivosParaSalida = [];
+            document.querySelectorAll('.explosivo-item').forEach(item => {
+                const id = item.dataset.id;
+                const cantidadInput = document.getElementById(`cantidad-${id}`);
+                const cantidad = parseInt(cantidadInput.value) || 0;
+                
+                if (cantidad > 0) {
+                    explosivosParaSalida.push({
+                        explosivo_id: id,
+                        cantidad: cantidad
+                    });
+                }
+            });
+            
+            if (explosivosParaSalida.length === 0) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Debe seleccionar al menos un explosivo con cantidad mayor a 0';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 5000);
+                return;
+            }
+            
+            formData.append('explosivos', JSON.stringify(explosivosParaSalida));
+            
+            // Mostrar modal de confirmación en lugar de enviar directamente
+            console.log('🔔 Llamando a mostrarConfirmacion con', explosivosParaSalida.length, 'explosivos');
+            mostrarConfirmacion(formData, explosivosParaSalida);
+        });
+
+        // Autocomplete para labores con dropdown personalizado
+        const laborInput = document.getElementById('labor');
+        const laboresDropdown = document.getElementById('labores-dropdown');
+        let selectedIndex = -1;
+        
+        laborInput.addEventListener('input', function() {
+            const termino = this.value;
+            
+            if (termino.length >= 1) {
+                fetch(`/api/buscar-labores?q=${encodeURIComponent(termino)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        laboresDropdown.innerHTML = '';
+                        selectedIndex = -1;
+                        
+                        if (data.labores && data.labores.length > 0) {
+                            data.labores.forEach((labor, index) => {
+                                const option = document.createElement('div');
+                                option.className = 'autocomplete-option';
+                                option.textContent = labor.nombre;
+                                option.onclick = () => {
+                                    laborInput.value = labor.nombre;
+                                    laboresDropdown.style.display = 'none';
+                                };
+                                laboresDropdown.appendChild(option);
+                            });
+                            laboresDropdown.style.display = 'block';
+                        } else {
+                            laboresDropdown.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error cargando labores:', error);
+                        laboresDropdown.style.display = 'none';
+                    });
+            } else {
+                laboresDropdown.style.display = 'none';
+            }
+        });
+
+        // Manejar teclas de navegación en el autocomplete
+        laborInput.addEventListener('keydown', function(e) {
+            const options = laboresDropdown.querySelectorAll('.autocomplete-option');
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, options.length - 1);
+                updateSelection(options);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                updateSelection(options);
+            } else if (e.key === 'Enter') {
+                if (selectedIndex >= 0 && options[selectedIndex]) {
+                    e.preventDefault();
+                    laborInput.value = options[selectedIndex].textContent;
+                    laboresDropdown.style.display = 'none';
+                }
+            } else if (e.key === 'Escape') {
+                laboresDropdown.style.display = 'none';
+                selectedIndex = -1;
+            }
+        });
+
+        function updateSelection(options) {
+            options.forEach((option, index) => {
+                option.classList.toggle('highlighted', index === selectedIndex);
+            });
+        }
+
+        // Cerrar dropdown al hacer clic fuera
+        document.addEventListener('click', function(e) {
+            if (!laborInput.contains(e.target) && !laboresDropdown.contains(e.target)) {
+                laboresDropdown.style.display = 'none';
+            }
+        });
+
+        // Autocomplete para tipos de actividad con dropdown personalizado
+        const tipoActividadInput = document.getElementById('tipo_actividad');
+        const tiposActividadDropdown = document.getElementById('tipos-actividad-dropdown');
+        let selectedIndexTipos = -1;
+        
+        tipoActividadInput.addEventListener('input', function() {
+            const termino = this.value;
+            
+            if (termino.length >= 1) {
+                fetch(`/api/tipos-actividad?q=${encodeURIComponent(termino)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        tiposActividadDropdown.innerHTML = '';
+                        selectedIndexTipos = -1;
+                        
+                        if (data.tipos_actividad && data.tipos_actividad.length > 0) {
+                            data.tipos_actividad.forEach((tipo, index) => {
+                                const option = document.createElement('div');
+                                option.className = 'autocomplete-option';
+                                option.textContent = tipo.nombre;
+                                option.onclick = () => {
+                                    tipoActividadInput.value = tipo.nombre;
+                                    tiposActividadDropdown.style.display = 'none';
+                                };
+                                tiposActividadDropdown.appendChild(option);
+                            });
+                            tiposActividadDropdown.style.display = 'block';
+                        } else {
+                            tiposActividadDropdown.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error cargando tipos de actividad:', error);
+                        tiposActividadDropdown.style.display = 'none';
+                    });
+            } else {
+                tiposActividadDropdown.style.display = 'none';
+            }
+        });
+
+        // Manejar teclas de navegación para tipos de actividad
+        tipoActividadInput.addEventListener('keydown', function(e) {
+            const options = tiposActividadDropdown.querySelectorAll('.autocomplete-option');
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndexTipos = Math.min(selectedIndexTipos + 1, options.length - 1);
+                updateSelectionTipos(options);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndexTipos = Math.max(selectedIndexTipos - 1, -1);
+                updateSelectionTipos(options);
+            } else if (e.key === 'Enter') {
+                if (selectedIndexTipos >= 0 && options[selectedIndexTipos]) {
+                    e.preventDefault();
+                    tipoActividadInput.value = options[selectedIndexTipos].textContent;
+                    tiposActividadDropdown.style.display = 'none';
+                }
+            } else if (e.key === 'Escape') {
+                tiposActividadDropdown.style.display = 'none';
+                selectedIndexTipos = -1;
+            }
+        });
+
+        function updateSelectionTipos(options) {
+            options.forEach((option, index) => {
+                option.classList.toggle('highlighted', index === selectedIndexTipos);
+            });
+        }
+
+        // Cerrar dropdown de tipos al hacer clic fuera
+        document.addEventListener('click', function(e) {
+            if (!tipoActividadInput.contains(e.target) && !tiposActividadDropdown.contains(e.target)) {
+                tiposActividadDropdown.style.display = 'none';
+            }
+        });
+
+        // ========== FUNCIONES PARA EL MODAL DE CONFIRMACIÓN ==========
+
+        function cerrarModal() {
+            document.getElementById('modalConfirmacion').style.display = 'none';
+        }
+
+        function mostrarConfirmacion(formData, explosivos) {
+            console.log('📋 mostrarConfirmacion (salida) ejecutada con', explosivos.length, 'explosivos');
+            datosFormulario = formData;
+            explosivosSeleccionados = explosivos;
+
+            // Generar resumen para confirmación
+            let resumenHTML = `
+                <div class="confirmacion-item">
+                    <strong>Fecha:</strong> ${document.getElementById('fecha_salida').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Labor:</strong> ${document.getElementById('labor').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Tipo de Actividad:</strong> ${document.getElementById('tipo_actividad').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Responsable:</strong> ${document.getElementById('responsable').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Autorizado por:</strong> ${document.getElementById('autorizado_por').value}
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Turno:</strong> ${document.getElementById('turno').value}
+                </div>
+            `;
+
+            if (document.getElementById('observaciones').value.trim()) {
+                resumenHTML += `
+                    <div class="confirmacion-item">
+                        <strong>Observaciones:</strong> ${document.getElementById('observaciones').value}
+                    </div>
+                `;
+            }
+
+            resumenHTML += `
+                <div class="confirmacion-item">
+                    <strong>Explosivos a registrar:</strong>
+                    <div class="confirmacion-explosivos">
+            `;
+
+            let totalExplosivos = 0;
+            explosivos.forEach(exp => {
+                const explosivo = document.querySelector(`.explosivo-item[data-id="${exp.explosivo_id}"]`);
+                const nombre = explosivo.querySelector('.col-descripcion strong').textContent;
+                const unidad = explosivo.querySelector('.col-unidad .unidad-badge').textContent;
+                
+                resumenHTML += `
+                    <div class="confirmacion-explosivo">
+                        <strong>${nombre}</strong>: ${exp.cantidad} ${unidad}
+                    </div>
+                `;
+                totalExplosivos += parseInt(exp.cantidad);
+            });
+
+            resumenHTML += `
+                    </div>
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Total de explosivos:</strong> ${explosivos.length} tipos diferentes
+                </div>
+                <div class="confirmacion-item">
+                    <strong>Cantidad total:</strong> ${totalExplosivos} unidades
+                </div>
+            `;
+
+            document.getElementById('confirmacionResumen').innerHTML = resumenHTML;
+            document.getElementById('modalConfirmacion').style.display = 'block';
+        }
+
+        // Función para enviar el formulario después de confirmación
+        async function confirmarRegistro() {
+            console.log('✅ confirmarRegistro (salida) ejecutada');
+            cerrarModal();
+            
+            const notificacion = document.getElementById('notificacion');
+            const btnRegistrar = document.getElementById('btnRegistrar');
+            
+            console.log('🔘 Botón encontrado:', !!btnRegistrar);
+            
+            // PROTECCIÓN ANTI-DUPLICADOS: Verificar si ya se está procesando
+            if (btnRegistrar && btnRegistrar.disabled) {
+                console.log('⚠️ Botón ya está deshabilitado, saliendo');
+                return; // Ya se está procesando
+            }
+            
+            // Deshabilitar botón y cambiar texto
+            if (btnRegistrar) {
+                console.log('🔄 Cambiando botón a estado procesando');
+                btnRegistrar.disabled = true;
+                btnRegistrar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            }
+            
+            try {
+                const response = await fetch('/salidas/nueva', {
+                    method: 'POST',
+                    body: datosFormulario
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    notificacion.className = 'notificacion success';
+                    notificacion.textContent = '✅ Salida registrada correctamente. Todos los campos han sido limpiados.';
+                    // Limpiar formulario completo
+                    limpiarFormulario();
+                    // Recargar stock
+                    await cargarStockTodos();
+                } else {
+                    notificacion.className = 'notificacion error';
+                    notificacion.textContent = result.error || 'Error al registrar salida';
+                }
+                
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 20000);
+                
+            } catch (error) {
+                notificacion.className = 'notificacion error';
+                notificacion.textContent = 'Error de conexión';
+                notificacion.style.display = 'block';
+                setTimeout(() => notificacion.style.display = 'none', 20000);
+            } finally {
+                // Rehabilitar botón y restaurar texto original
+                if (btnRegistrar) {
+                    btnRegistrar.disabled = false;
+                    btnRegistrar.innerHTML = '<i class="fas fa-save"></i> Registrar Salida';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

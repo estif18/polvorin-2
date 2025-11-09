@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Simple - Nuevo Ingreso</title>
+    <script>
+        function debugFormulario() {
+            console.log("=== INICIO DEBUG ===");
+            
+            // Verificar existencia de elementos
+            const form = document.getElementById('ingresoForm');
+            const button = document.getElementById('btnRegistrar');
+            
+            console.log("Formulario existe:", !!form);
+            console.log("Botón existe:", !!button);
+            
+            if (!form) {
+                alert("❌ No se encontró el formulario");
+                return;
+            }
+            
+            // Verificar event listeners
+            console.log("Agregando event listener...");
+            
+            form.addEventListener('submit', function(e) {
+                console.log("🎯 EVENT LISTENER EJECUTADO!");
+                e.preventDefault();
+                alert("✅ Event listener funcionando!");
+            });
+            
+            console.log("Event listener agregado.");
+            
+            // Simular submit programático
+            console.log("Probando submit programático...");
+            const event = new Event('submit', { bubbles: true, cancelable: true });
+            form.dispatchEvent(event);
+            
+            console.log("=== FIN DEBUG ===");
+        }
+        
+        window.onload = function() {
+            document.getElementById('testButton').addEventListener('click', debugFormulario);
+            console.log("Página cargada, click en 'Test' para debug");
+        };
+    </script>
+</head>
+<body>
+    <h1>Test Simple de Formulario</h1>
+    
+    <form id="ingresoForm">
+        <input type="text" placeholder="Campo de prueba" required>
+        <button type="submit" id="btnRegistrar">Registrar Ingreso</button>
+    </form>
+    
+    <br><br>
+    <button type="button" id="testButton">Ejecutar Debug</button>
+    
+    <div id="output"></div>
+</body>
+</html>
