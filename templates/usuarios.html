@@ -106,16 +106,28 @@
                         </td>
                         <td>{{ usuario.fecha_creacion.strftime('%d/%m/%Y') }}</td>
                         <td>
-                            {% if usuario.username != 'admin' %}
-                                <button class="btn-small btn-danger" data-usuario-id="{{ usuario.id }}" onclick="toggleUsuario(this.dataset.usuarioId)">
-                                    {% if usuario.activo %}
-                                        <i class="fas fa-user-slash"></i> Desactivar
-                                    {% else %}
-                                        <i class="fas fa-user-check"></i> Activar
-                                    {% endif %}
-                                </button>
+                            {% if usuario.id != session.get('user_id') %}
+                                <div class="acciones-usuario">
+                                    <button class="btn-small btn-warning" 
+                                            data-usuario-id="{{ usuario.id }}" 
+                                            onclick="cambiarEstadoUsuario({{ usuario.id }})">
+                                        {% if usuario.activo %}
+                                            <i class="fas fa-user-slash"></i> Desactivar
+                                        {% else %}
+                                            <i class="fas fa-user-check"></i> Activar
+                                        {% endif %}
+                                    </button>
+                                    
+                                    <button class="btn-small btn-danger" 
+                                            data-usuario-id="{{ usuario.id }}" 
+                                            onclick="confirmarEliminarUsuario({{ usuario.id }}, '{{ usuario.username }}', '{{ usuario.nombre_completo }}')">
+                                        <i class="fas fa-trash"></i> Eliminar
+                                    </button>
+                                </div>
                             {% else %}
-                                <em>Usuario protegido</em>
+                                <span class="badge estado-protegido">
+                                    <i class="fas fa-shield-alt"></i> Usuario Actual
+                                </span>
                             {% endif %}
                         </td>
                     </tr>
@@ -147,6 +159,211 @@
         .separator {
             margin: 0 10px;
             color: #6c757d;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.875rem;
+            margin: 0 2px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e0a800;
+            transform: translateY(-1px);
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c82333;
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        
+        .acciones-usuario {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .estado-protegido {
+            background-color: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        /* Estilos para modal de confirmación */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 0;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 90%;
+            transform: scale(0.8) translateY(-50px);
+            transition: all 0.3s ease;
+        }
+        
+        .modal-overlay.show .modal-content {
+            transform: scale(1) translateY(0);
+        }
+        
+        .modal-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: #dc3545;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            border-radius: 0 0 8px 8px;
+            background: #f8f9fa;
+        }
+        
+        .usuario-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        
+        .usuario-info p {
+            margin: 5px 0;
+        }
+        
+        .alert {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .alert-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        
+        /* Estilos para notificaciones */
+        .notificacion {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            z-index: 1001;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .notificacion.show {
+            transform: translateX(0);
+        }
+        
+        .notificacion.success {
+            background: linear-gradient(135deg, #28a745, #20c997);
+        }
+        
+        .notificacion.error {
+            background: linear-gradient(135deg, #dc3545, #e74c3c);
+        }
+        
+        .notificacion-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .notificacion-icon {
+            font-size: 1.2em;
+        }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .badge.activo {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .badge.inactivo {
+            background-color: #dc3545;
+            color: white;
         }
         
         .current {
@@ -260,12 +477,146 @@
     </style>
 
     <script>
-        function toggleUsuario(userId) {
-            if (confirm('¿Está seguro de cambiar el estado de este usuario?')) {
-                // Aquí se implementaría la lógica para activar/desactivar usuario
-                alert('Funcionalidad en desarrollo');
+        function cambiarEstadoUsuario(userId) {
+            fetch(`/usuarios/cambiar_estado/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarNotificacion(data.message, 'success');
+                    // Recargar la página después de 1.5 segundos
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    mostrarNotificacion(data.message || 'Error al cambiar estado del usuario', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mostrarNotificacion('Error de conexión', 'error');
+            });
+        }
+
+        function confirmarEliminarUsuario(userId, username, nombreCompleto) {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Confirmar Eliminación</h3>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>¿Está seguro de eliminar este usuario?</strong></p>
+                        <div class="usuario-info">
+                            <p><strong>Usuario:</strong> ${username}</p>
+                            <p><strong>Nombre:</strong> ${nombreCompleto}</p>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fas fa-warning"></i>
+                            Esta acción no se puede deshacer. Todos los datos asociados a este usuario serán eliminados permanentemente.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="cerrarModal()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="eliminarUsuario(${userId})">
+                            <i class="fas fa-trash"></i> Eliminar Usuario
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Animar la entrada del modal
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function eliminarUsuario(userId) {
+            const modal = document.querySelector('.modal-overlay');
+            const deleteBtn = modal.querySelector('.btn-danger');
+            
+            // Cambiar el botón a estado de carga
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+            deleteBtn.disabled = true;
+            
+            fetch(`/usuarios/eliminar/${userId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarNotificacion(data.message, 'success');
+                    cerrarModal();
+                    // Recargar la página después de 1.5 segundos
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    mostrarNotificacion(data.message || 'Error al eliminar usuario', 'error');
+                    deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Eliminar Usuario';
+                    deleteBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mostrarNotificacion('Error de conexión', 'error');
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Eliminar Usuario';
+                deleteBtn.disabled = false;
+            });
+        }
+
+        function cerrarModal() {
+            const modal = document.querySelector('.modal-overlay');
+            if (modal) {
+                modal.classList.remove('show');
+                setTimeout(() => {
+                    modal.remove();
+                }, 300);
             }
         }
+
+        function mostrarNotificacion(mensaje, tipo) {
+            // Crear el elemento de notificación
+            const notificacion = document.createElement('div');
+            notificacion.className = `notificacion ${tipo}`;
+            notificacion.innerHTML = `
+                <div class="notificacion-content">
+                    <span class="notificacion-icon">
+                        <i class="fas ${tipo === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
+                    </span>
+                    <span class="notificacion-mensaje">${mensaje}</span>
+                </div>
+            `;
+            
+            // Agregar al DOM
+            document.body.appendChild(notificacion);
+            
+            // Animar entrada
+            setTimeout(() => notificacion.classList.add('show'), 100);
+            
+            // Remover después de 4 segundos
+            setTimeout(() => {
+                notificacion.classList.remove('show');
+                setTimeout(() => notificacion.remove(), 300);
+            }, 4000);
+        }
+
+        // Cerrar modal con Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                cerrarModal();
+            }
+        });
     </script>
 </body>
 </html>

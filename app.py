@@ -707,6 +707,71 @@ def listar_usuarios():
     usuarios = Usuario.query.order_by(Usuario.nombre_completo).all()
     return render_template('usuarios.html', usuarios=usuarios)
 
+@app.route('/usuarios/eliminar/<int:usuario_id>', methods=['POST', 'DELETE'])
+@require_login
+def eliminar_usuario(usuario_id):
+    """Eliminar usuario (solo administradores)"""
+    usuario_actual = obtener_usuario_actual()
+    if not usuario_actual.puede_administrar_usuarios():
+        return jsonify({'error': 'No tiene permisos para eliminar usuarios'}), 403
+    
+    try:
+        # No permitir que el administrador se elimine a sí mismo
+        if usuario_id == usuario_actual.id:
+            return jsonify({'error': 'No puede eliminar su propia cuenta'}), 400
+        
+        usuario_a_eliminar = db.session.get(Usuario, usuario_id)
+        if not usuario_a_eliminar:
+            return jsonify({'error': 'Usuario no encontrado'}), 404
+        
+        # Guardar nombre para el mensaje de confirmación
+        nombre_usuario = usuario_a_eliminar.nombre_completo
+        username = usuario_a_eliminar.username
+        
+        # Eliminar usuario
+        db.session.delete(usuario_a_eliminar)
+        db.session.commit()
+        
+        return jsonify({
+            'success': f'Usuario {username} ({nombre_usuario}) eliminado correctamente'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Error al eliminar usuario: {str(e)}'}), 500
+
+@app.route('/usuarios/cambiar_estado/<int:usuario_id>', methods=['POST'])
+@require_login
+def cambiar_estado_usuario(usuario_id):
+    """Activar/desactivar usuario (solo administradores)"""
+    usuario_actual = obtener_usuario_actual()
+    if not usuario_actual.puede_administrar_usuarios():
+        return jsonify({'error': 'No tiene permisos para cambiar estado de usuarios'}), 403
+    
+    try:
+        # No permitir que el administrador se desactive a sí mismo
+        if usuario_id == usuario_actual.id:
+            return jsonify({'error': 'No puede cambiar el estado de su propia cuenta'}), 400
+        
+        usuario = db.session.get(Usuario, usuario_id)
+        if not usuario:
+            return jsonify({'error': 'Usuario no encontrado'}), 404
+        
+        # Cambiar estado
+        usuario.activo = not usuario.activo
+        estado_texto = 'activado' if usuario.activo else 'desactivado'
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': f'Usuario {usuario.username} {estado_texto} correctamente',
+            'nuevo_estado': usuario.activo
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Error al cambiar estado: {str(e)}'}), 500
+
 @app.route('/usuarios/nuevo', methods=['GET', 'POST'])
 @require_login
 def nuevo_usuario():
@@ -2015,8 +2080,9 @@ def ver_stock_diario():
     from sqlalchemy import text
     
     try:
+        # Consulta simplificada que filtra correctamente por fecha y turno
         query_base = """
-            SELECT 
+            SELECT DISTINCT
                 e.id as explosivo_id,
                 e.codigo,
                 e.descripcion,
@@ -2028,37 +2094,49 @@ def ver_stock_diario():
                 sd.stock_final,
                 sd.responsable_guardia,
                 sd.observaciones,
-                COALESCE(ingresos_dia.total_ingresos, 0) as total_ingresos,
-                COALESCE(salidas_dia.total_salidas, 0) as total_salidas,
-                COALESCE(devoluciones_dia.total_devoluciones, 0) as total_devoluciones
+                
+                -- Ingresos del turno específico
+                COALESCE((
+                    SELECT SUM(i.cantidad) 
+                    FROM ingresos i 
+                    WHERE i.explosivo_id = e.id 
+                    AND CAST(i.fecha_ingreso AS DATE) = sd.fecha 
+                    AND i.guardia = sd.guardia
+                ), 0) as total_ingresos,
+                
+                -- Salidas del turno específico  
+                COALESCE((
+                    SELECT SUM(s.cantidad)
+                    FROM salidas s
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
+                    AND s.guardia = sd.guardia
+                ), 0) as total_salidas,
+                
+                -- Devoluciones del turno específico
+                COALESCE((
+                    SELECT SUM(d.cantidad_devuelta)
+                    FROM devoluciones d
+                    INNER JOIN salidas s ON d.salida_id = s.id
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(d.fecha_devolucion AS DATE) = sd.fecha
+                    AND s.guardia = sd.guardia
+                ), 0) as total_devoluciones,
+                
+                -- Detalle de labores del turno específico
+                (
+                    SELECT STRING_AGG(s.labor + ':' + CAST(s.cantidad AS VARCHAR), '|')
+                    FROM salidas s
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
+                    AND s.guardia = sd.guardia
+                    AND s.labor IS NOT NULL
+                ) as labores_detalle
+                
             FROM explosivos e
-            LEFT JOIN stock_diario sd ON e.id = sd.explosivo_id AND sd.fecha = :fecha
-            LEFT JOIN (
-                SELECT 
-                    i.explosivo_id,
-                    SUM(i.cantidad) as total_ingresos
-                FROM ingresos i
-                WHERE CAST(i.fecha_ingreso AS DATE) = :fecha
-                GROUP BY i.explosivo_id
-            ) ingresos_dia ON e.id = ingresos_dia.explosivo_id
-            LEFT JOIN (
-                SELECT 
-                    s.explosivo_id,
-                    SUM(s.cantidad) as total_salidas
-                FROM salidas s
-                WHERE CAST(s.fecha_salida AS DATE) = :fecha
-                GROUP BY s.explosivo_id
-            ) salidas_dia ON e.id = salidas_dia.explosivo_id
-            LEFT JOIN (
-                SELECT 
-                    d.explosivo_id,
-                    SUM(d.cantidad_devuelta) as total_devoluciones
-                FROM devoluciones d
-                WHERE CAST(d.fecha_devolucion AS DATE) = :fecha
-                GROUP BY d.explosivo_id
-            ) devoluciones_dia ON e.id = devoluciones_dia.explosivo_id
+            INNER JOIN stock_diario sd ON e.id = sd.explosivo_id AND sd.fecha = :fecha
             WHERE e.activo = 1
-            ORDER BY CASE WHEN sd.id IS NOT NULL THEN 0 ELSE 1 END, e.grupo, e.codigo
+            ORDER BY sd.guardia DESC, e.grupo, e.codigo
         """
         
         params = {'fecha': fecha_obj}
@@ -2086,36 +2164,20 @@ def ver_stock_diario():
         
         for stock in stocks_data:
             codigo = stock.codigo
+            turno_key = 'dia' if stock.turno == 'DIA' else 'noche'
             
-            if stock.stock_inicial is not None:
-                stock_inicial = float(stock.stock_inicial)
-                stock_final = float(stock.stock_final or stock_inicial)
-            else:
-                query_anterior = """
-                    SELECT TOP 1 stock_final 
-                    FROM stock_diario 
-                    WHERE explosivo_id = :explosivo_id 
-                    AND fecha < :fecha 
-                    ORDER BY fecha DESC, id DESC
-                """
-                result_anterior = db.session.execute(text(query_anterior), {
-                    'explosivo_id': stock.explosivo_id,
-                    'fecha': fecha_obj
-                })
-                stock_anterior = result_anterior.fetchone()
-                result_anterior.close()
-                
-                stock_inicial = float(stock_anterior[0]) if stock_anterior else 0.0
-                
-                ingresos = float(stock.total_ingresos or 0)
-                salidas = float(stock.total_salidas or 0)
-                devoluciones = float(stock.total_devoluciones or 0)
-                stock_final = stock_inicial + ingresos - salidas + devoluciones
-            
+            # Obtener movimientos del turno
             ingresos = float(stock.total_ingresos or 0)
             salidas = float(stock.total_salidas or 0)
             devoluciones = float(stock.total_devoluciones or 0)
             
+            # Determinar stock inicial 
+            stock_inicial = float(stock.stock_inicial or 0)
+            
+            # SIEMPRE calcular el stock final basado en la fórmula estándar
+            stock_final = stock_inicial + ingresos - salidas + devoluciones
+            
+            # Calcular diferencia
             diferencia = stock_final - stock_inicial
             
             if diferencia > 0:
@@ -2128,31 +2190,60 @@ def ver_stock_diario():
                 tipo_diferencia = 'cero'
                 resumen_data['total_diferencias_cero'] += 1
             
-            datos_organizados[codigo] = {
-                'explosivo': {
-                    'id': stock.explosivo_id,
-                    'codigo': stock.codigo,
-                    'descripcion': stock.descripcion,
-                    'unidad': stock.unidad,
-                    'grupo': stock.grupo
-                },
-                'dia': {
-                    'stock_inicial': stock_inicial,
-                    'stock_final': stock_final,
-                    'diferencia': diferencia,
-                    'tipo_diferencia': tipo_diferencia,
-                    'responsable_guardia': stock.responsable_guardia or obtener_guardia_actual(),
-                    'observaciones': stock.observaciones or f'Stock para {fecha_obj}',
-                    'ingresos_dia': ingresos,
-                    'salidas_total': salidas,
-                    'devoluciones_dia': devoluciones,
-                    'labores': {
-                        'labor_1': {'nombre': 'Labor Principal', 'cantidad': salidas * 0.6 if salidas > 0 else 0},
-                        'labor_2': {'nombre': 'Labor Secundaria', 'cantidad': salidas * 0.4 if salidas > 0 else 0},
-                        'labor_3': {'nombre': 'Labor Extra', 'cantidad': 0}
-                    }
-                },
-                'noche': None
+            # Procesar las labores específicas del turno
+            labores_del_turno = {}
+            if hasattr(stock, 'labores_detalle') and stock.labores_detalle:
+                # Formato: "M-1005 V3:25|M-535 V5 N:15"
+                for labor_detalle in stock.labores_detalle.split('|'):
+                    if ':' in labor_detalle:
+                        nombre_labor, cantidad_str = labor_detalle.split(':', 1)
+                        try:
+                            cantidad_labor = float(cantidad_str)
+                            # Usar un número secuencial para el key
+                            labor_key = f'labor_{len(labores_del_turno) + 1}'
+                            labores_del_turno[labor_key] = {
+                                'nombre': nombre_labor.strip(),
+                                'cantidad': cantidad_labor
+                            }
+                        except ValueError:
+                            continue
+            
+            # Si no hay labores específicas pero hay salidas, crear entrada genérica
+            if not labores_del_turno and salidas > 0:
+                labores_del_turno['labor_1'] = {
+                    'nombre': 'Salidas del turno',
+                    'cantidad': salidas
+                }
+            
+            # Debug temporal para verificar datos
+            print(f"📊 {codigo} {turno_key}: SI:{stock_inicial}, SF:{stock_final}, Ing:{ingresos}, Sal:{salidas}, Dev:{devoluciones}, Dif:{diferencia}")
+            
+            # Inicializar entrada para el explosivo si no existe
+            if codigo not in datos_organizados:
+                datos_organizados[codigo] = {
+                    'explosivo': {
+                        'id': stock.explosivo_id,
+                        'codigo': stock.codigo,
+                        'descripcion': stock.descripcion,
+                        'unidad': stock.unidad,
+                        'grupo': stock.grupo
+                    },
+                    'dia': None,
+                    'noche': None
+                }
+            
+            # Asignar datos al turno correspondiente
+            datos_organizados[codigo][turno_key] = {
+                'stock_inicial': stock_inicial,
+                'stock_final': stock_final,
+                'diferencia': diferencia,
+                'tipo_diferencia': tipo_diferencia,
+                'responsable_guardia': stock.responsable_guardia or obtener_guardia_actual(),
+                'observaciones': stock.observaciones or f'Stock para {fecha_obj}',
+                'ingresos_dia': ingresos,
+                'salidas_total': salidas,
+                'devoluciones_dia': devoluciones,
+                'labores': labores_del_turno
             }
             
             resumen_data['stock_inicial_total'] += stock_inicial
@@ -2162,8 +2253,46 @@ def ver_stock_diario():
         resumen_data['total_explosivos'] = len(datos_organizados)
         resumen = type('obj', (object,), resumen_data)
         
-        labores_por_turno = {'dia': ['Labor Principal', 'Labor Secundaria', 'Labor Extra']}
-        max_labores_por_turno = {'dia': 3}
+        # Obtener las labores que se usaron en la fecha específica, por turno
+        try:
+            query_labores_fecha = """
+                SELECT DISTINCT 
+                    s.guardia as turno,
+                    s.labor
+                FROM salidas s
+                WHERE CAST(s.fecha_salida AS DATE) = :fecha
+                ORDER BY s.guardia DESC, s.labor
+            """
+            
+            result_labores = db.session.execute(text(query_labores_fecha), {'fecha': fecha_obj})
+            labores_usadas = result_labores.fetchall()
+            result_labores.close()
+            
+            # Organizar labores por turno
+            labores_por_turno = {'dia': [], 'noche': []}
+            for labor_data in labores_usadas:
+                turno_key = 'dia' if labor_data.turno == 'DIA' else 'noche'
+                if labor_data.labor not in labores_por_turno[turno_key]:
+                    labores_por_turno[turno_key].append(labor_data.labor)
+            
+            # Si no hay labores en la fecha, usar todas las labores disponibles
+            if not any(labores_por_turno.values()):
+                labores_reales = Labor.query.all()
+                nombres_labores = [labor.nombre for labor in labores_reales]
+                labores_por_turno = {
+                    'dia': nombres_labores,
+                    'noche': nombres_labores
+                }
+            
+            max_labores_por_turno = {
+                'dia': len(labores_por_turno['dia']),
+                'noche': len(labores_por_turno['noche'])
+            }
+            
+        except Exception as e:
+            # Fallback a valores por defecto si hay error
+            labores_por_turno = {'dia': [], 'noche': []}
+            max_labores_por_turno = {'dia': 0, 'noche': 0}
         
         return render_template('stock_diario_dinamico.html', 
                              datos=datos_organizados,
@@ -2185,6 +2314,23 @@ def ver_stock_diario():
             explosivos = obtener_explosivos_ordenados()
         except:
             pass
+        
+        # Obtener las labores reales incluso en caso de error
+        try:
+            labores_reales = Labor.query.all()
+            nombres_labores = [labor.nombre for labor in labores_reales]
+            
+            labores_por_turno_fallback = {
+                'dia': nombres_labores,
+                'noche': nombres_labores
+            }
+            max_labores_por_turno_fallback = {
+                'dia': len(nombres_labores),
+                'noche': len(nombres_labores)
+            }
+        except:
+            labores_por_turno_fallback = {'dia': []}
+            max_labores_por_turno_fallback = {'dia': 0}
             
         return render_template('stock_diario_dinamico.html', 
                              datos={},
@@ -2192,8 +2338,8 @@ def ver_stock_diario():
                              explosivos=explosivos,
                              explosivo_seleccionado=explosivo_filtro,
                              resumen=None,
-                             labores_por_turno={'dia': []},
-                             max_labores_por_turno={'dia': 0})
+                             labores_por_turno=labores_por_turno_fallback,
+                             max_labores_por_turno=max_labores_por_turno_fallback)
 
 @app.route('/api/stock-diario-datos')
 @require_login_api
