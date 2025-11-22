@@ -77,7 +77,6 @@ SELECT
     
     -- Información adicional
     sd.responsable_guardia,
-    sd.labor,
     sd.observaciones,
     
     -- Detalle de labores del turno (para Power BI puede ser útil como texto)
@@ -116,7 +115,7 @@ SELECT
     FORMAT(sd.fecha, 'yyyy-\QQ') as periodo_trimestre,
     
     -- Timestamps para auditoría
-    sd.fecha_creacion as stock_diario_creado,
+    sd.fecha_registro as stock_diario_creado,
     GETDATE() as fecha_consulta
 
 FROM stock_diario sd
