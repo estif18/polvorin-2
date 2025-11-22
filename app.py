@@ -2740,33 +2740,60 @@ def descargar_stock_diario_excel():
         except:
             fecha_obj = date.today()
         
-        # Obtener datos usando la misma lógica que ver_stock_diario
+        # Obtener datos usando consulta directa similar a stock_diario
         from sqlalchemy import text
         
         query_base = """
-            SELECT 
-                codigo,
-                descripcion,
-                unidad,
-                stock_inicial,
-                ingresos,
-                total_sal_guardia as TOTAL_SALGUARDIA,
-                labor_1 as LABOR_1_CANTIDAD, 
-                'Labor 1' as LABOR_1_NOMBRE,
-                labor_2 as LABOR_2_CANTIDAD,
-                'Labor 2' as LABOR_2_NOMBRE,
-                labor_3 as LABOR_3_CANTIDAD,
-                'Labor 3' as LABOR_3_NOMBRE,
-                labor_4 as LABOR_4_CANTIDAD,
-                'Labor 4' as LABOR_4_NOMBRE,
-                labor_5 as LABOR_5_CANTIDAD,
-                'Labor 5' as LABOR_5_NOMBRE,
-                retorno,
-                stock_final_guardia as STOCK_FINAL_DE_GUARDIA,
-                fecha,
-                turno
-            FROM vista_vale_despacho 
-            WHERE fecha = :fecha
+            SELECT DISTINCT
+                e.codigo,
+                e.descripcion,
+                e.unidad,
+                sd.stock_inicial,
+                -- Ingresos del turno específico
+                COALESCE((
+                    SELECT SUM(i.cantidad) 
+                    FROM ingresos i 
+                    WHERE i.explosivo_id = e.id 
+                    AND CAST(i.fecha_ingreso AS DATE) = sd.fecha 
+                    AND i.guardia = sd.guardia
+                ), 0) as ingresos,
+                
+                -- Salidas del turno específico  
+                COALESCE((
+                    SELECT SUM(s.cantidad)
+                    FROM salidas s
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
+                    AND s.guardia = sd.guardia
+                ), 0) as total_sal_guardia,
+                
+                -- Devoluciones del turno específico
+                COALESCE((
+                    SELECT SUM(d.cantidad_devuelta)
+                    FROM devoluciones d
+                    INNER JOIN salidas s ON d.salida_id = s.id
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(d.fecha_devolucion AS DATE) = sd.fecha
+                    AND d.guardia = sd.guardia
+                ), 0) as retorno,
+                
+                -- Detalle de labores del turno específico
+                COALESCE((
+                    SELECT STRING_AGG(s.labor + ':' + CAST(s.cantidad AS VARCHAR), '|')
+                    FROM salidas s
+                    WHERE s.explosivo_id = e.id
+                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
+                    AND s.guardia = sd.guardia
+                    AND s.labor IS NOT NULL
+                ), '') as labores_detalle,
+                
+                sd.stock_final as stock_final_de_guardia,
+                sd.fecha,
+                sd.guardia as turno
+                
+            FROM explosivos e
+            INNER JOIN stock_diario sd ON e.id = sd.explosivo_id AND sd.fecha = :fecha
+            WHERE e.activo = 1
         """
         
         params = {'fecha': fecha_obj}
@@ -2790,32 +2817,69 @@ def descargar_stock_diario_excel():
         # Crear CSV que Excel puede abrir
         csv_content = ""
         
-        # Headers
-        csv_content += "Turno,Código,Descripción,Unidad,Stock Inicial,Total Salidas,"
-        csv_content += "Labor 1 Nombre,Labor 1 Cantidad,Labor 2 Nombre,Labor 2 Cantidad,"
-        csv_content += "Labor 3 Nombre,Labor 3 Cantidad,Labor 4 Nombre,Labor 4 Cantidad,"
-        csv_content += "Labor 5 Nombre,Labor 5 Cantidad,Retorno,Stock Final\n"
+        # Procesar datos para determinar el número máximo de labores
+        datos_procesados = []
+        max_labores = 0
         
-        # Datos
         for stock in stocks_data:
+            labores = {}
+            if hasattr(stock, 'labores_detalle') and stock.labores_detalle:
+                # Formato: "M-1005 V3:25|M-535 V5 N:15"
+                for labor_detalle in stock.labores_detalle.split('|'):
+                    if ':' in labor_detalle:
+                        nombre_labor, cantidad_str = labor_detalle.split(':', 1)
+                        try:
+                            cantidad_labor = float(cantidad_str)
+                            labor_key = f'labor_{len(labores) + 1}'
+                            labores[labor_key] = {
+                                'nombre': nombre_labor.strip(),
+                                'cantidad': cantidad_labor
+                            }
+                        except ValueError:
+                            continue
+            
+            # Actualizar el máximo número de labores
+            max_labores = max(max_labores, len(labores))
+            
+            datos_procesados.append({
+                'stock': stock,
+                'labores': labores
+            })
+        
+        # Si no hay labores en ningún registro, establecer mínimo de 1
+        if max_labores == 0:
+            max_labores = 1
+        
+        # Headers dinámicos
+        csv_content += "Turno,Código,Descripción,Unidad,Stock Inicial,Total Salidas,"
+        for i in range(1, max_labores + 1):
+            csv_content += f"Labor {i} Nombre,Labor {i} Cantidad,"
+        csv_content += "Retorno,Stock Final\n"
+        
+        # Datos con labores dinámicas
+        for item in datos_procesados:
+            stock = item['stock']
+            labores = item['labores']
+            
             csv_content += f"{stock.turno},"
             csv_content += f'"{stock.codigo}",'
             csv_content += f'"{stock.descripcion}",'
             csv_content += f'"{stock.unidad}",'
             csv_content += f"{stock.stock_inicial or 0},"
             csv_content += f"{stock.total_sal_guardia or 0},"
-            csv_content += f'"Labor 1",'
-            csv_content += f"{stock.labor_1 or 0},"
-            csv_content += f'"Labor 2",'
-            csv_content += f"{stock.labor_2 or 0},"
-            csv_content += f'"Labor 3",'
-            csv_content += f"{stock.labor_3 or 0},"
-            csv_content += f'"Labor 4",'
-            csv_content += f"{stock.labor_4 or 0},"
-            csv_content += f'"Labor 5",'
-            csv_content += f"{stock.labor_5 or 0},"
+            
+            # Agregar labores dinámicamente
+            for i in range(1, max_labores + 1):
+                labor_key = f'labor_{i}'
+                if labor_key in labores:
+                    csv_content += f'"{labores[labor_key]["nombre"]}",'
+                    csv_content += f"{labores[labor_key]['cantidad']},"
+                else:
+                    csv_content += '"N/A",'
+                    csv_content += "0,"
+            
             csv_content += f"{stock.retorno or 0},"
-            csv_content += f"{stock.stock_final_guardia or 0}\n"
+            csv_content += f"{stock.stock_final_de_guardia or 0}\n"
         
         # Crear respuesta
         output = io.BytesIO()
