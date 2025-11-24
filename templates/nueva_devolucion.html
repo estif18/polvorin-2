@@ -319,13 +319,17 @@
             document.querySelectorAll('.explosivo-item').forEach(item => {
                 const id = item.dataset.id;
                 const cantidadInput = document.getElementById(`cantidad-${id}`);
-                const cantidad = parseFloat(cantidadInput.value) || 0;
                 
-                if (cantidad > 0) {
-                    explosivosParaDevolucion.push({
-                        explosivo_id: id,
-                        cantidad: cantidad
-                    });
+                // Verificar que cantidadInput existe antes de acceder a value
+                if (cantidadInput && cantidadInput.value) {
+                    const cantidad = parseFloat(cantidadInput.value) || 0;
+                    
+                    if (cantidad > 0) {
+                        explosivosParaDevolucion.push({
+                            explosivo_id: id,
+                            cantidad: cantidad
+                        });
+                    }
                 }
             });
             
@@ -480,20 +484,21 @@
             // Generar resumen para confirmación
             let resumenHTML = `
                 <div class="confirmacion-item">
-                    <strong>Fecha:</strong> ${document.getElementById('fecha_devolucion').value}
+                    <strong>Fecha:</strong> ${document.getElementById('fecha_devolucion')?.value || 'No especificada'}
                 </div>
                 <div class="confirmacion-item">
-                    <strong>Labor de origen:</strong> ${document.getElementById('labor_origen').value}
+                    <strong>Labor de origen:</strong> ${document.getElementById('labor_origen')?.value || 'No especificada'}
                 </div>
                 <div class="confirmacion-item">
-                    <strong>Supervisor responsable:</strong> ${document.getElementById('supervisor_responsable').value}
+                    <strong>Supervisor responsable:</strong> ${document.getElementById('supervisor_responsable')?.value || 'No especificado'}
                 </div>
             `;
 
-            if (document.getElementById('observaciones').value.trim()) {
+            const observacionesEl = document.getElementById('observaciones');
+            if (observacionesEl && observacionesEl.value.trim()) {
                 resumenHTML += `
                     <div class="confirmacion-item">
-                        <strong>Observaciones:</strong> ${document.getElementById('observaciones').value}
+                        <strong>Observaciones:</strong> ${observacionesEl.value}
                     </div>
                 `;
             }
@@ -507,15 +512,20 @@
             let totalExplosivos = 0;
             explosivos.forEach(exp => {
                 const explosivo = document.querySelector(`.explosivo-item[data-id="${exp.explosivo_id}"]`);
-                const nombre = explosivo.querySelector('.col-descripcion strong').textContent;
-                const unidad = explosivo.querySelector('.col-unidad .unidad-badge').textContent;
-                
-                resumenHTML += `
-                    <div class="confirmacion-explosivo">
-                        <strong>${nombre}</strong>: ${exp.cantidad} ${unidad}
-                    </div>
-                `;
-                totalExplosivos += parseFloat(exp.cantidad);
+                if (explosivo) {
+                    const nombreEl = explosivo.querySelector('.col-descripcion strong');
+                    const unidadEl = explosivo.querySelector('.col-unidad .unidad-badge');
+                    
+                    const nombre = nombreEl ? nombreEl.textContent : 'Explosivo desconocido';
+                    const unidad = unidadEl ? unidadEl.textContent : 'unidad';
+                    
+                    resumenHTML += `
+                        <div class="confirmacion-explosivo">
+                            <strong>${nombre}</strong>: ${exp.cantidad} ${unidad}
+                        </div>
+                    `;
+                    totalExplosivos += parseFloat(exp.cantidad);
+                }
             });
 
             resumenHTML += `
