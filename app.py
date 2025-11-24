@@ -16,6 +16,9 @@ import time
 import uuid
 import json
 
+# Importar sincronización automática
+from sincronizacion_simple import trigger_sincronizacion_stock
+
 app = Flask(__name__)
 app.secret_key = 'pallca_secret_key_2025'
 
@@ -502,9 +505,9 @@ def obtener_stock_diario_actual(explosivo_id, fecha_objetivo=None, retornar_obje
     if stock_diario:
         return stock_diario if retornar_objeto else stock_diario.stock_inicial
     
-    # Si no existe stock diario para esta fecha, inicializarlo automáticamente
+    # Si no existe stock diario para esta fecha, inicializar AMBOS TURNOS automáticamente
     try:
-        inicializar_stock_fecha_si_necesario(fecha_objetivo, guardia)
+        inicializar_ambos_turnos_fecha(fecha_objetivo)
         
         # Buscar nuevamente después de la inicialización
         stock_diario = StockDiario.query.filter_by(
@@ -697,6 +700,107 @@ def inicializar_stock_fecha_si_necesario(fecha_objetivo, guardia):
         except Exception as e:
             db.session.rollback()
             raise
+
+def inicializar_ambos_turnos_fecha(fecha_objetivo):
+    """Inicializar AMBOS turnos (día y noche) para una fecha específica"""
+    from sqlalchemy import text
+    
+    # Convertir fecha_objetivo a date si es datetime
+    if isinstance(fecha_objetivo, datetime):
+        fecha_objetivo = fecha_objetivo.date()
+    
+    try:
+        # Verificar qué turnos ya existen para esta fecha
+        turnos_existentes = db.session.query(StockDiario.guardia).filter_by(fecha=fecha_objetivo).distinct().all()
+        turnos_existentes = [t[0] for t in turnos_existentes]
+        
+        turnos_a_crear = []
+        if 'dia' not in turnos_existentes:
+            turnos_a_crear.append('dia')
+        if 'noche' not in turnos_existentes:
+            turnos_a_crear.append('noche')
+        
+        if not turnos_a_crear:
+            return  # Ya existen ambos turnos
+            
+        # Obtener stock base para cálculos
+        if usar_vista_stock_powerbi():
+            try:
+                result = db.session.execute(text("""
+                    SELECT id, stock_actual 
+                    FROM v_stock_actual
+                    ORDER BY id
+                """)).fetchall()
+                stock_base = {row.id: int(row.stock_actual) for row in result}
+                
+            except Exception as e:
+                # Fallback al cálculo directo
+                explosivos = Explosivo.query.all()
+                stock_base = {}
+                for explosivo in explosivos:
+                    try:
+                        stock_base[explosivo.id] = calcular_stock_explosivo_original(explosivo.id)
+                    except:
+                        stock_base[explosivo.id] = 0
+        else:
+            explosivos = Explosivo.query.all()
+            stock_base = {}
+            for explosivo in explosivos:
+                try:
+                    stock_base[explosivo.id] = calcular_stock_explosivo_original(explosivo.id)
+                except:
+                    stock_base[explosivo.id] = 0
+        
+        # Crear turnos faltantes
+        for guardia in turnos_a_crear:
+            for explosivo_id, stock_actual in stock_base.items():
+                try:
+                    # Para turno DÍA: stock inicial = stock actual
+                    # Para turno NOCHE: stock inicial = stock final del día (si existe) o stock actual
+                    if guardia == 'dia':
+                        stock_inicial = stock_actual
+                        stock_final = stock_actual
+                    else:  # noche
+                        # Buscar stock final del turno día para esta fecha
+                        stock_dia = StockDiario.query.filter_by(
+                            explosivo_id=explosivo_id,
+                            fecha=fecha_objetivo,
+                            guardia='dia'
+                        ).first()
+                        
+                        if stock_dia:
+                            stock_inicial = stock_dia.stock_final
+                            stock_final = stock_dia.stock_final
+                        else:
+                            stock_inicial = stock_actual
+                            stock_final = stock_actual
+                    
+                    nuevo_stock = StockDiario(
+                        explosivo_id=explosivo_id,
+                        fecha=fecha_objetivo,
+                        guardia=guardia,
+                        stock_inicial=stock_inicial,
+                        stock_final=stock_final,
+                        responsable_guardia='Sistema Auto',
+                        observaciones=f'Turno {guardia.upper()} inicializado automáticamente - {fecha_objetivo}'
+                    )
+                    
+                    db.session.add(nuevo_stock)
+                    
+                except Exception as e:
+                    continue
+        
+        try:
+            db.session.commit()
+            if turnos_a_crear:
+                print(f"✅ Inicializados turnos {', '.join(turnos_a_crear)} para fecha {fecha_objetivo}")
+        except Exception as e:
+            db.session.rollback()
+            raise
+            
+    except Exception as e:
+        print(f"❌ Error inicializando turnos para fecha {fecha_objetivo}: {e}")
+        db.session.rollback()
 
 # Rutas de la aplicación
 
@@ -1035,7 +1139,7 @@ def nueva_salida():
                     stocks_lote[explosivo_id] = calcular_stock_explosivo_original(explosivo_id)
             
             # OPTIMIZACIÓN 3: Inicializar stock diario si no existe
-            guardia = obtener_guardia_actual()
+            # Usar la guardia seleccionada por el usuario, no la actual del sistema
             inicializar_stock_fecha_si_necesario(fecha_salida.date(), guardia)
             
             # OPTIMIZACIÓN 4: Obtener todos los stock_diario necesarios en una consulta
@@ -1114,10 +1218,20 @@ def nueva_salida():
                             'observaciones': observaciones
                         })
                         
+                        # ACTUALIZAR STOCK_FINAL del stock_diario correspondiente
+                        stock_diario_obj = stocks_diario_lote[salida['explosivo_id']]
+                        stock_diario_obj.stock_final -= salida['cantidad']
+                        
                         salidas_registradas.append({
                             'explosivo_id': salida['explosivo_id'],
                             'cantidad': salida['cantidad']
                         })
+                        
+                        # 🔄 SINCRONIZACIÓN AUTOMÁTICA 
+                        try:
+                            trigger_sincronizacion_stock('salida', salida['explosivo_id'], fecha_salida.date(), guardia)
+                        except Exception as sync_error:
+                            print(f"⚠️ Error sincronización automática: {sync_error}")
                     
                     
                 except Exception as e:
@@ -1349,6 +1463,11 @@ def nueva_devolucion():
                         'descripcion': explosivo.descripcion
                     })
                     
+                    # 🔄 SINCRONIZACIÓN AUTOMÁTICA
+                    try:
+                        trigger_sincronizacion_stock('devolucion', explosivo.id, fecha_devolucion.date(), turno)
+                    except Exception as sync_error:
+                        print(f"⚠️ Error sincronización automática: {sync_error}")
                     
                 except Exception as e:
                     db.session.rollback()  # Rollback en caso de error individual
@@ -1538,6 +1657,12 @@ def nuevo_ingreso():
                 
                 resultados.append(f'{cantidad} {explosivo.unidad} de {explosivo.descripcion}')
                 
+                # 🔄 SINCRONIZACIÓN AUTOMÁTICA
+                try:
+                    trigger_sincronizacion_stock('ingreso', explosivo_id, fecha_ingreso.date(), guardia)
+                except Exception as sync_error:
+                    print(f"⚠️ Error sincronización automática: {sync_error}")
+                
             except ValueError as e:
                 errores.append(f'Error en explosivo {item.get("explosivo_id", "desconocido")}: valores inválidos')
             except Exception as e:
@@ -1578,29 +1703,68 @@ def nuevo_ingreso():
 @app.route('/stock')
 @require_login
 def resumen_stock():
-    """Resumen de stock por guardia"""
+    """Resumen de stock por guardia usando vista dinámica"""
     hoy = date.today()
     guardia = obtener_guardia_actual()
     
-    # Inicializar stock para hoy si es necesario
-    inicializar_stock_fecha_si_necesario(hoy, guardia)
-    
-    # Obtener stock diario de hoy
-    stocks_diarios = StockDiario.query.filter_by(
-        fecha=hoy, 
-        guardia=guardia
-    ).join(Explosivo).order_by(Explosivo.codigo).all()
-    
-    # Retornar JSON o redirigir
-    if request.args.get('format') == 'json':
-        return jsonify([{
-            'explosivo_codigo': sd.explosivo.codigo,
-            'explosivo_descripcion': sd.explosivo.descripcion,
-            'stock_inicial': int(sd.stock_inicial),
-            'stock_final': int(sd.stock_final),
-            'guardia': sd.guardia,
-            'fecha': sd.fecha.isoformat()
-        } for sd in stocks_diarios])
+    # Usar vista dinámica en lugar de tabla directa
+    try:
+        from sqlalchemy import text
+        query = text("""
+            SELECT 
+                codigo,
+                descripcion,
+                unidad,
+                stock_inicial,
+                stock_final,
+                ingresos,
+                salidas,
+                devoluciones,
+                estado_consistencia
+            FROM vw_stock_diario_simple
+            WHERE fecha = :fecha AND guardia = :guardia
+            ORDER BY codigo
+        """)
+        
+        resultado = db.session.execute(query, {
+            'fecha': hoy,
+            'guardia': guardia
+        }).fetchall()
+        
+        # Retornar JSON o redirigir
+        if request.args.get('format') == 'json':
+            return jsonify([{
+                'explosivo_codigo': row.codigo,
+                'explosivo_descripcion': row.descripcion,
+                'unidad': row.unidad,
+                'stock_inicial': float(row.stock_inicial),
+                'stock_final': float(row.stock_final),
+                'ingresos': float(row.ingresos),
+                'salidas': float(row.salidas),
+                'devoluciones': float(row.devoluciones),
+                'guardia': guardia,
+                'fecha': hoy.isoformat(),
+                'estado_consistencia': row.estado_consistencia
+            } for row in resultado])
+        
+    except Exception as e:
+        print(f"Error usando vista dinámica: {e}")
+        # Fallback a método original si falla
+        inicializar_stock_fecha_si_necesario(hoy, guardia)
+        stocks_diarios = StockDiario.query.filter_by(
+            fecha=hoy, 
+            guardia=guardia
+        ).join(Explosivo).order_by(Explosivo.codigo).all()
+        
+        if request.args.get('format') == 'json':
+            return jsonify([{
+                'explosivo_codigo': sd.explosivo.codigo,
+                'explosivo_descripcion': sd.explosivo.descripcion,
+                'stock_inicial': int(sd.stock_inicial),
+                'stock_final': int(sd.stock_final),
+                'guardia': sd.guardia,
+                'fecha': sd.fecha.isoformat()
+            } for sd in stocks_diarios])
     
     return redirect(url_for('simple_dashboard'))
 
@@ -2229,7 +2393,7 @@ def ver_stock_diario():
         
         for stock in stocks_data:
             codigo = stock.codigo
-            turno_key = 'dia' if stock.turno == 'DIA' else 'noche'
+            turno_key = 'dia' if stock.turno == 'dia' else 'noche'
             
             # Obtener movimientos del turno
             ingresos = float(stock.total_ingresos or 0)
@@ -2239,8 +2403,8 @@ def ver_stock_diario():
             # Determinar stock inicial 
             stock_inicial = float(stock.stock_inicial or 0)
             
-            # SIEMPRE calcular el stock final basado en la fórmula estándar
-            stock_final = stock_inicial + ingresos - salidas + devoluciones
+            # USAR el stock final real de la base de datos, NO calcularlo
+            stock_final = float(stock.stock_final or 0)
             
             # Calcular diferencia
             diferencia = stock_final - stock_inicial
@@ -2280,8 +2444,16 @@ def ver_stock_diario():
                     'cantidad': salidas
                 }
             
-            # Debug temporal para verificar datos
-            print(f"📊 {codigo} {turno_key}: SI:{stock_inicial}, SF:{stock_final}, Ing:{ingresos}, Sal:{salidas}, Dev:{devoluciones}, Dif:{diferencia}")
+            # Si no hay labores específicas NI salidas registradas, pero hay diferencia negativa,
+            # significa que fue un ajuste manual
+            if not labores_del_turno and salidas == 0 and diferencia < 0:
+                labores_del_turno['labor_1'] = {
+                    'nombre': 'Ajuste Manual',
+                    'cantidad': abs(diferencia)
+                }
+            
+            # Debug temporal para verificar datos - REMOVIDO PARA PRODUCCIÓN
+            # print(f"📊 {codigo} {turno_key}: SI:{stock_inicial}, SF:{stock_final}, Ing:{ingresos}, Sal:{salidas}, Dev:{devoluciones}, Dif:{diferencia}")
             
             # Inicializar entrada para el explosivo si no existe
             if codigo not in datos_organizados:
@@ -2336,7 +2508,7 @@ def ver_stock_diario():
             # Organizar labores por turno
             labores_por_turno = {'dia': [], 'noche': []}
             for labor_data in labores_usadas:
-                turno_key = 'dia' if labor_data.turno == 'DIA' else 'noche'
+                turno_key = 'dia' if labor_data.turno == 'dia' else 'noche'
                 if labor_data.labor not in labores_por_turno[turno_key]:
                     labores_por_turno[turno_key].append(labor_data.labor)
             
@@ -2350,8 +2522,8 @@ def ver_stock_diario():
                 }
             
             max_labores_por_turno = {
-                'dia': len(labores_por_turno['dia']),
-                'noche': len(labores_por_turno['noche'])
+                'dia': max(1, len(labores_por_turno['dia'])),
+                'noche': max(1, len(labores_por_turno['noche']))
             }
             
         except Exception as e:
@@ -2420,18 +2592,25 @@ def api_stock_diario_datos():
     from sqlalchemy import text
     
     try:
-        # Usar la vista vw_stock_explosivos_powerbi optimizada para datos diarios
+        # Usar la nueva vista vw_stock_diario_simple que incluye validación de consistencia
         query = """
             SELECT 
-                codigo_explosivo,
+                codigo,
                 descripcion,
+                unidad,
                 fecha,
-                turno,
+                guardia,
                 stock_inicial,
-                stock_final
-            FROM vw_stock_explosivos_powerbi 
+                stock_final,
+                ingresos,
+                salidas,
+                devoluciones,
+                responsable_guardia,
+                observaciones,
+                estado_consistencia
+            FROM vw_stock_diario_simple 
             WHERE fecha = :fecha
-            ORDER BY codigo_explosivo, turno DESC
+            ORDER BY codigo, guardia DESC
         """
         
         result = db.session.execute(text(query), {'fecha': fecha_obj})
@@ -2440,7 +2619,7 @@ def api_stock_diario_datos():
         
         resultado = []
         for stock in stocks:
-            # Calcular diferencia
+            # Calcular diferencia (stock final - inicial)
             diferencia = float(stock.stock_final) - float(stock.stock_inicial)
             
             # Determinar tipo de diferencia
@@ -2452,16 +2631,21 @@ def api_stock_diario_datos():
                 tipo_diferencia = 'cero'
             
             resultado.append({
-                'codigo': stock.codigo_explosivo,
+                'codigo': stock.codigo,
                 'descripcion': stock.descripcion,
+                'unidad': stock.unidad,
                 'fecha': fecha_obj.isoformat(),
-                'turno': stock.turno,
+                'turno': stock.guardia,
                 'stock_inicial': float(stock.stock_inicial),
                 'stock_final': float(stock.stock_final),
                 'diferencia': diferencia,
                 'tipo_diferencia': tipo_diferencia,
-                'responsable_guardia': obtener_guardia_actual(),
-                'observaciones': f'Vista optimizada - {fecha_obj}'
+                'ingresos': float(stock.ingresos),
+                'salidas': float(stock.salidas), 
+                'devoluciones': float(stock.devoluciones),
+                'responsable_guardia': stock.responsable_guardia or 'Sistema',
+                'observaciones': stock.observaciones or f'Vista dinámica - {fecha_obj}',
+                'estado_consistencia': stock.estado_consistencia
             })
         
         return jsonify(resultado)
@@ -2805,60 +2989,26 @@ def descargar_stock_diario_excel():
         except:
             fecha_obj = date.today()
         
-        # Obtener datos usando consulta directa similar a stock_diario
+        # Obtener datos usando la nueva vista dinámica
         from sqlalchemy import text
         
         query_base = """
-            SELECT DISTINCT
-                e.codigo,
-                e.descripcion,
-                e.unidad,
-                sd.stock_inicial,
-                -- Ingresos del turno específico
-                COALESCE((
-                    SELECT SUM(i.cantidad) 
-                    FROM ingresos i 
-                    WHERE i.explosivo_id = e.id 
-                    AND CAST(i.fecha_ingreso AS DATE) = sd.fecha 
-                    AND i.guardia = sd.guardia
-                ), 0) as ingresos,
-                
-                -- Salidas del turno específico  
-                COALESCE((
-                    SELECT SUM(s.cantidad)
-                    FROM salidas s
-                    WHERE s.explosivo_id = e.id
-                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
-                    AND s.guardia = sd.guardia
-                ), 0) as total_sal_guardia,
-                
-                -- Devoluciones del turno específico
-                COALESCE((
-                    SELECT SUM(d.cantidad_devuelta)
-                    FROM devoluciones d
-                    INNER JOIN salidas s ON d.salida_id = s.id
-                    WHERE s.explosivo_id = e.id
-                    AND CAST(d.fecha_devolucion AS DATE) = sd.fecha
-                    AND d.guardia = sd.guardia
-                ), 0) as retorno,
-                
-                -- Detalle de labores del turno específico
-                COALESCE((
-                    SELECT STRING_AGG(s.labor + ':' + CAST(s.cantidad AS VARCHAR), '|')
-                    FROM salidas s
-                    WHERE s.explosivo_id = e.id
-                    AND CAST(s.fecha_salida AS DATE) = sd.fecha
-                    AND s.guardia = sd.guardia
-                    AND s.labor IS NOT NULL
-                ), '') as labores_detalle,
-                
-                sd.stock_final as stock_final_de_guardia,
-                sd.fecha,
-                sd.guardia as turno
-                
-            FROM explosivos e
-            INNER JOIN stock_diario sd ON e.id = sd.explosivo_id AND sd.fecha = :fecha
-            WHERE e.activo = 1
+            SELECT 
+                codigo,
+                descripcion,
+                unidad,
+                stock_inicial,
+                ingresos,
+                salidas as total_sal_guardia,
+                devoluciones as retorno,
+                stock_final as stock_final_de_guardia,
+                fecha,
+                guardia as turno,
+                responsable_guardia,
+                observaciones,
+                estado_consistencia
+            FROM vw_stock_diario_simple
+            WHERE fecha = :fecha
         """
         
         params = {'fecha': fecha_obj}
@@ -2873,7 +3023,7 @@ def descargar_stock_diario_excel():
                 query_base += " AND codigo = :codigo_explosivo"
                 params['codigo_explosivo'] = explosivo_codigo[0]
         
-        query_base += " ORDER BY codigo, turno DESC"
+        query_base += " ORDER BY codigo, guardia DESC"
         
         result = db.session.execute(text(query_base), params)
         stocks_data = result.fetchall()
@@ -3864,6 +4014,50 @@ def es_admin():
 def internal_error(error):
     db.session.rollback()
     return jsonify({'error': 'Error interno del servidor'}), 500
+
+@app.route('/api/inicializar-turnos-hoy')
+@require_login
+def inicializar_turnos_hoy():
+    """Inicializar ambos turnos (día y noche) para la fecha actual"""
+    try:
+        fecha_hoy = date.today()
+        
+        # Verificar turnos existentes antes de inicializar
+        turnos_antes = db.session.query(StockDiario.guardia).filter_by(fecha=fecha_hoy).distinct().all()
+        turnos_antes = [t[0] for t in turnos_antes]
+        
+        # Inicializar ambos turnos
+        inicializar_ambos_turnos_fecha(fecha_hoy)
+        
+        # Verificar turnos después de inicializar
+        turnos_despues = db.session.query(StockDiario.guardia).filter_by(fecha=fecha_hoy).distinct().all()
+        turnos_despues = [t[0] for t in turnos_despues]
+        
+        # Contar registros por turno
+        conteo_turnos = {}
+        for guardia in ['dia', 'noche']:
+            count = StockDiario.query.filter_by(fecha=fecha_hoy, guardia=guardia).count()
+            conteo_turnos[guardia] = count
+        
+        response = {
+            'success': True,
+            'mensaje': f'Turnos inicializados para {fecha_hoy}',
+            'fecha': fecha_hoy.isoformat(),
+            'turnos_antes': turnos_antes,
+            'turnos_despues': turnos_despues,
+            'conteo_turnos': conteo_turnos,
+            'explosivos_total': Explosivo.query.count()
+        }
+        
+        # Si faltan turnos, agregar advertencia
+        if len(turnos_despues) < 2:
+            response['advertencia'] = f'Solo se pudieron crear {len(turnos_despues)} de 2 turnos'
+            
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"Error inicializando turnos: {e}")
+        return jsonify({'error': f'Error inicializando turnos: {str(e)}'}), 500
 
 if __name__ == '__main__':
     with app.app_context():
