@@ -244,6 +244,32 @@ def obtener_guardia_actual():
     else:
         return "noche"
 
+def obtener_hora_estandar_turno(guardia, fecha_base=None):
+    """Obtener hora estandarizada para turno: día=8AM, noche=8PM"""
+    if fecha_base is None:
+        fecha_base = datetime.now().date()
+    elif isinstance(fecha_base, datetime):
+        fecha_base = fecha_base.date()
+    
+    if guardia.lower() == "dia":
+        # Turno día: 8:00 AM
+        return datetime.combine(fecha_base, datetime.min.time().replace(hour=8, minute=0, second=0))
+    else:
+        # Turno noche: 8:00 PM (20:00)
+        return datetime.combine(fecha_base, datetime.min.time().replace(hour=20, minute=0, second=0))
+
+def aplicar_hora_estandar_movimiento(fecha_usuario, guardia):
+    """Aplicar hora estándar a un movimiento manteniendo la fecha del usuario"""
+    if isinstance(fecha_usuario, str):
+        # Si viene como string, convertir a datetime
+        fecha_base = datetime.strptime(fecha_usuario, '%Y-%m-%d').date()
+    elif isinstance(fecha_usuario, datetime):
+        fecha_base = fecha_usuario.date()
+    else:
+        fecha_base = fecha_usuario
+    
+    return obtener_hora_estandar_turno(guardia, fecha_base)
+
 def usuario_logueado():
     """Verificar si hay un usuario logueado"""
     return 'user_id' in session
@@ -922,14 +948,23 @@ def nueva_salida():
         session[session_key] = True
         
         try:
+            # Obtener turno y calcular guardia
+            turno = request.form.get('turno', '')  # DIA o NOCHE
+            
+            if not turno:
+                return jsonify({'error': 'Debe seleccionar un turno (DIA o NOCHE)'}), 400
+            
+            guardia = "dia" if turno.upper() == "DIA" else "noche"
+            
             # Datos generales de la salida
-            fecha_salida_str = request.form.get('fecha_salida')
             fecha_salida_str = request.form.get('fecha_salida')
             
             if fecha_salida_str:
-                fecha_salida = datetime.strptime(fecha_salida_str, '%Y-%m-%d')
+                # Aplicar hora estándar según el turno: día=8AM, noche=8PM
+                fecha_salida = aplicar_hora_estandar_movimiento(fecha_salida_str, guardia)
             else:
-                fecha_salida = datetime.now()
+                # Si no se especifica fecha, usar fecha actual con hora estándar
+                fecha_salida = aplicar_hora_estandar_movimiento(datetime.now().date(), guardia)
                 
             labor = request.form.get('labor', '')
             
@@ -944,11 +979,6 @@ def nueva_salida():
             responsable = request.form.get('responsable', '').strip()  # Trabajador que recibe
             
             autorizado_por = usuario_actual.nombre_completo  # Usuario logueado que autoriza
-            
-            turno = request.form.get('turno', '')  # DIA o NOCHE
-            
-            if not turno:
-                return jsonify({'error': 'Debe seleccionar un turno (DIA o NOCHE)'}), 400
             
             observaciones = request.form.get('observaciones', '')
             
@@ -1217,18 +1247,28 @@ def nueva_devolucion():
         session[session_key] = True
         
         try:
+            # Obtener turno y calcular guardia
+            turno = request.form.get('turno', '').strip()
+            
+            # Si no se especifica turno en el form, usar guardia actual
+            if not turno:
+                guardia = obtener_guardia_actual()
+            else:
+                guardia = "dia" if turno.upper() == "DIA" else "noche"
+            
             # Datos generales de la devolución
             fecha_devolucion_str = request.form.get('fecha_devolucion')
             if fecha_devolucion_str:
-                fecha_devolucion = datetime.strptime(fecha_devolucion_str, '%Y-%m-%d')
+                # Aplicar hora estándar según el turno: día=8AM, noche=8PM
+                fecha_devolucion = aplicar_hora_estandar_movimiento(fecha_devolucion_str, guardia)
             else:
-                fecha_devolucion = datetime.now()
+                # Si no se especifica fecha, usar fecha actual con hora estándar
+                fecha_devolucion = aplicar_hora_estandar_movimiento(datetime.now().date(), guardia)
                 
             labor_origen = request.form.get('labor_origen', '').strip()
             supervisor_responsable = request.form.get('supervisor_responsable', '').strip()
             motivo_devolucion = request.form.get('motivo_devolucion', '').strip()
             recibido_por = request.form.get('recibido_por', '').strip()
-            turno = request.form.get('turno', '').strip()
             numero_vale = request.form.get('numero_vale', '').strip()
             observaciones = request.form.get('observaciones', '').strip()
             
@@ -1409,11 +1449,21 @@ def nuevo_ingreso():
             
         
         # Obtener datos generales del formulario
+        turno = request.form.get('turno', '').strip()  # DIA o NOCHE
+        
+        # Si no se especifica turno en el form, usar guardia actual
+        if not turno:
+            guardia = obtener_guardia_actual()
+        else:
+            guardia = "dia" if turno.upper() == "DIA" else "noche"
+        
         fecha_ingreso_str = request.form.get('fecha_ingreso')
         if fecha_ingreso_str:
-            fecha_ingreso = datetime.strptime(fecha_ingreso_str, '%Y-%m-%d')
+            # Aplicar hora estándar según el turno: día=8AM, noche=8PM
+            fecha_ingreso = aplicar_hora_estandar_movimiento(fecha_ingreso_str, guardia)
         else:
-            fecha_ingreso = datetime.now()
+            # Si no se especifica fecha, usar fecha actual con hora estándar
+            fecha_ingreso = aplicar_hora_estandar_movimiento(datetime.now().date(), guardia)
             
         numero_vale = request.form.get('numero_vale', '').strip()
         # Si el vale está vacío, dejarlo como None para la base de datos
@@ -1422,9 +1472,7 @@ def nuevo_ingreso():
         
         recibido_por = usuario_actual.nombre_completo  # Usar usuario logueado
         
-        turno = request.form.get('turno', '')  # DIA o NOCHE
-        
-        if not turno:
+        if not guardia:
             return jsonify({'error': 'Debe seleccionar un turno (DIA o NOCHE)'}), 400
             
         observaciones = request.form.get('observaciones', '').strip()
