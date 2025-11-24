@@ -396,7 +396,7 @@ def calcular_stock_explosivo_original(explosivo_id):
 def obtener_stock_todos_explosivos_optimizado():
     """Obtener stock de todos los explosivos usando vistas optimizadas o cálculo directo"""
     try:
-        # OPCIÓN 1: Usar vista v_stock_actual (más eficiente)
+        # OPCIÓN 1: Usar vista v_stock_actual (más eficiente y recién corregida)
         if usar_vista_stock_powerbi():
             try:
                 result = db.session.execute(text("""
@@ -405,9 +405,18 @@ def obtener_stock_todos_explosivos_optimizado():
                         codigo,
                         descripcion,
                         unidad,
-                        stock_actual
+                        stock_actual,
+                        grupo
                     FROM v_stock_actual
-                    ORDER BY codigo
+                    ORDER BY 
+                        CASE 
+                            WHEN grupo = 'EXPLOSIVOS' THEN 1
+                            WHEN grupo LIKE '%FANEL%MS%' THEN 2
+                            WHEN grupo LIKE '%FANEL%LP%' THEN 3
+                            WHEN grupo LIKE '%FANEL%' THEN 4
+                            ELSE 5
+                        END,
+                        codigo
                 """)).fetchall()
                 
                 stocks = {}
@@ -417,9 +426,11 @@ def obtener_stock_todos_explosivos_optimizado():
                         'explosivo_id': row.explosivo_id,
                         'descripcion': row.descripcion,
                         'unidad': row.unidad,
-                        'codigo': row.codigo
+                        'codigo': row.codigo,
+                        'grupo': row.grupo or 'Sin grupo'
                     }
                 
+                print(f"✅ Stock obtenido vía v_stock_actual: {len(stocks)} explosivos")
                 return stocks
                 
             except Exception as e:
@@ -490,7 +501,7 @@ def obtener_stock_diario_actual(explosivo_id, fecha_objetivo=None, retornar_obje
 def usar_vista_stock_powerbi():
     """Verificar si las vistas de stock están disponibles"""
     try:
-        # Verificar vista principal v_stock_actual
+        # Verificar vista principal v_stock_actual (recién creada)
         result = db.session.execute(text("""
             SELECT COUNT(*) as count
             FROM INFORMATION_SCHEMA.VIEWS 
@@ -499,20 +510,25 @@ def usar_vista_stock_powerbi():
         
         if result and result.count > 0:
             # Verificar que la vista tiene datos
-            result = db.session.execute(text("SELECT COUNT(*) as count FROM v_stock_actual")).fetchone()
-            return result and result.count > 0
+            try:
+                result = db.session.execute(text("SELECT COUNT(*) as count FROM v_stock_actual")).fetchone()
+                return result and result.count > 0
+            except:
+                return False
         
-        # Fallback: verificar vista vw_stock_explosivos_powerbi
+        # Fallback: verificar vista vw_stock_diario_powerbi
         result = db.session.execute(text("""
             SELECT COUNT(*) as count
             FROM INFORMATION_SCHEMA.VIEWS 
-            WHERE TABLE_NAME = 'vw_stock_explosivos_powerbi'
+            WHERE TABLE_NAME = 'vw_stock_diario_powerbi'
         """)).fetchone()
         
         if result and result.count > 0:
-            # Verificar que la vista tiene datos
-            result = db.session.execute(text("SELECT COUNT(*) as count FROM vw_stock_explosivos_powerbi")).fetchone()
-            return result and result.count > 0
+            try:
+                result = db.session.execute(text("SELECT COUNT(*) as count FROM vw_stock_diario_powerbi WHERE fecha >= DATEADD(day, -1, GETDATE())")).fetchone()
+                return result and result.count > 0
+            except:
+                return False
             
         return False
     except Exception as e:
@@ -522,13 +538,7 @@ def usar_vista_stock_powerbi():
 def obtener_stock_via_vista(explosivo_id, fecha_objetivo=None):
     """Obtener stock usando vistas optimizadas disponibles"""
     try:
-        if fecha_objetivo is None:
-            fecha_objetivo = date.today()
-        
-        if isinstance(fecha_objetivo, datetime):
-            fecha_objetivo = fecha_objetivo.date()
-        
-        # OPCIÓN 1: Usar v_stock_actual (más simple y directa)
+        # OPCIÓN 1: Usar v_stock_actual (más simple y confiable)
         try:
             result = db.session.execute(text("""
                 SELECT stock_actual 
@@ -539,19 +549,26 @@ def obtener_stock_via_vista(explosivo_id, fecha_objetivo=None):
             }).fetchone()
             
             if result:
-                return float(result.stock_actual)
+                return int(result.stock_actual)
         except Exception as e:
             print(f"Error usando v_stock_actual: {e}")
         
-        # OPCIÓN 2: Usar vw_stock_explosivos_powerbi con fecha
+        # OPCIÓN 2: Usar vw_stock_diario_powerbi como fallback
         try:
+            if fecha_objetivo is None:
+                fecha_objetivo = date.today()
+            
+            if isinstance(fecha_objetivo, datetime):
+                fecha_objetivo = fecha_objetivo.date()
+                
             guardia = obtener_guardia_actual()
             result = db.session.execute(text("""
-                SELECT stock_inicial 
-                FROM vw_stock_explosivos_powerbi 
+                SELECT stock_final 
+                FROM vw_stock_diario_powerbi 
                 WHERE explosivo_id = :explosivo_id 
                 AND fecha = :fecha 
-                AND turno = :guardia
+                AND guardia = :guardia
+                ORDER BY fecha_registro DESC
             """), {
                 'explosivo_id': explosivo_id,
                 'fecha': fecha_objetivo,
@@ -559,9 +576,9 @@ def obtener_stock_via_vista(explosivo_id, fecha_objetivo=None):
             }).fetchone()
             
             if result:
-                return float(result.stock_inicial)
+                return int(result.stock_final)
         except Exception as e:
-            print(f"Error usando vw_stock_explosivos_powerbi: {e}")
+            print(f"Error usando vw_stock_diario_powerbi: {e}")
         
         return None
         
