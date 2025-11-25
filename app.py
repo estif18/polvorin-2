@@ -615,7 +615,7 @@ def obtener_stock_via_vista(explosivo_id, fecha_objetivo=None):
         print(f"Error general obteniendo stock via vista: {e}")
         return None
 
-def inicializar_stock_fecha_si_necesario(fecha_objetivo, guardia):
+def inicializar_stock_fecha_si_necesario(fecha_objetivo, guardia, explosivos_ids=None):
     """Inicializar stock para una fecha y guardia específica si no existe"""
     from sqlalchemy import text
     
@@ -623,83 +623,125 @@ def inicializar_stock_fecha_si_necesario(fecha_objetivo, guardia):
     if isinstance(fecha_objetivo, datetime):
         fecha_objetivo = fecha_objetivo.date()
     
-    # Verificar si ya existe stock para esta fecha y guardia
-    existe_stock = StockDiario.query.filter_by(fecha=fecha_objetivo, guardia=guardia).first()
-    
-    if not existe_stock:
+    # Si se especifican explosivos específicos, verificar solo esos
+    if explosivos_ids:
+        # Verificar qué explosivos ya tienen stock
+        stocks_existentes = StockDiario.query.filter(
+            StockDiario.fecha == fecha_objetivo,
+            StockDiario.guardia == guardia,
+            StockDiario.explosivo_id.in_(explosivos_ids)
+        ).all()
         
-        # OPTIMIZACIÓN: Obtener todos los stocks usando vista si está disponible
-        if usar_vista_stock_powerbi():
-            try:
-                result = db.session.execute(text("""
-                    SELECT id, stock_actual 
-                    FROM v_stock_actual
-                    ORDER BY id
-                """)).fetchall()
+        explosivos_con_stock = {s.explosivo_id for s in stocks_existentes}
+        explosivos_faltantes = [eid for eid in explosivos_ids if eid not in explosivos_con_stock]
+        
+        if not explosivos_faltantes:
+            return
+        
+        # Crear stock solo para los faltantes usando vista optimizada
+        registros_creados = 0
+        try:
+            if usar_vista_stock_powerbi():
+                # Consulta optimizada para explosivos específicos
+                params = {}
+                for i, exp_id in enumerate(explosivos_faltantes):
+                    params[f'id_{i}'] = exp_id
+                placeholders = ','.join([f':id_{i}' for i in range(len(explosivos_faltantes))])
                 
+                result = db.session.execute(text(f"""
+                    SELECT id, stock_actual FROM v_stock_actual 
+                    WHERE id IN ({placeholders})
+                """), params).fetchall()
+                
+                # Crear registros en lote
+                nuevos_registros = []
                 for row in result:
-                    try:
-                        nuevo_stock = StockDiario(
-                            explosivo_id=row.id,
-                            fecha=fecha_objetivo,
-                            guardia=guardia,
-                            stock_inicial=int(row.stock_actual),
-                            stock_final=int(row.stock_actual),
-                            responsable_guardia='Sistema',
-                            observaciones=f'Inicializado automáticamente para fecha {fecha_objetivo} usando vista optimizada'
-                        )
-                        
-                        db.session.add(nuevo_stock)
-                        
-                    except Exception as e:
-                        continue
-                
-            except Exception as e:
-                # Fallback al método original
-                explosivos = Explosivo.query.all()
-                for explosivo in explosivos:
-                    try:
-                        stock_actual = calcular_stock_explosivo_original(explosivo.id)
-                        nuevo_stock = StockDiario(
-                            explosivo_id=explosivo.id,
-                            fecha=fecha_objetivo,
-                            guardia=guardia,
-                            stock_inicial=stock_actual,
-                            stock_final=stock_actual,
-                            responsable_guardia='Sistema',
-                            observaciones=f'Inicializado automáticamente para fecha {fecha_objetivo} (cálculo directo)'
-                        )
-                        
-                        db.session.add(nuevo_stock)
-                        
-                    except Exception as e:
-                        continue
-        else:
-            # Si no hay vistas disponibles, usar método original
-            explosivos = Explosivo.query.all()
-            for explosivo in explosivos:
-                try:
-                    stock_actual = calcular_stock_explosivo_original(explosivo.id)
-                    nuevo_stock = StockDiario(
-                        explosivo_id=explosivo.id,
+                    nuevos_registros.append(StockDiario(
+                        explosivo_id=row.id,
                         fecha=fecha_objetivo,
                         guardia=guardia,
-                        stock_inicial=stock_actual,
-                        stock_final=stock_actual,
+                        stock_inicial=int(row.stock_actual),
+                        stock_final=int(row.stock_actual),
                         responsable_guardia='Sistema',
-                        observaciones=f'Inicializado automáticamente para fecha {fecha_objetivo}'
-                    )
-                    
-                    db.session.add(nuevo_stock)
-                    
-                except Exception as e:
-                    continue
+                        observaciones=f'Auto-inicializado {fecha_objetivo}'
+                    ))
+                
+                db.session.add_all(nuevos_registros)
+                db.session.commit()
+                return
+            
+        except Exception:
+            pass
         
-        try:
+        # Fallback simple para explosivos faltantes
+        for exp_id in explosivos_faltantes:
+            try:
+                stock_actual = calcular_stock_explosivo_original(exp_id)
+                nuevo_stock = StockDiario(
+                    explosivo_id=exp_id,
+                    fecha=fecha_objetivo,
+                    guardia=guardia,
+                    stock_inicial=stock_actual,
+                    stock_final=stock_actual,
+                    responsable_guardia='Sistema',
+                    observaciones=f'Auto-inicializado {fecha_objetivo}'
+                )
+                db.session.add(nuevo_stock)
+            except Exception:
+                continue
+        
+        db.session.commit()
+        return
+    
+    # Modo original para todos los explosivos (solo si no se especifican IDs)
+    existe_stock = StockDiario.query.filter_by(fecha=fecha_objetivo, guardia=guardia).first()
+    if existe_stock:
+        return
+    
+    # Crear para todos usando vista optimizada
+    try:
+        if usar_vista_stock_powerbi():
+            result = db.session.execute(text("""
+                SELECT id, stock_actual FROM v_stock_actual ORDER BY id
+            """)).fetchall()
+            
+            nuevos_registros = []
+            for row in result:
+                nuevos_registros.append(StockDiario(
+                    explosivo_id=row.id,
+                    fecha=fecha_objetivo,
+                    guardia=guardia,
+                    stock_inicial=int(row.stock_actual),
+                    stock_final=int(row.stock_actual),
+                    responsable_guardia='Sistema',
+                    observaciones=f'Auto-inicializado {fecha_objetivo}'
+                ))
+            
+            db.session.add_all(nuevos_registros)
             db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            raise
+            return
+    except Exception:
+        pass
+    
+    # Fallback para todos los explosivos
+    explosivos = Explosivo.query.all()
+    for explosivo in explosivos:
+        try:
+            stock_actual = calcular_stock_explosivo_original(explosivo.id)
+            nuevo_stock = StockDiario(
+                explosivo_id=explosivo.id,
+                fecha=fecha_objetivo,
+                guardia=guardia,
+                stock_inicial=stock_actual,
+                stock_final=stock_actual,
+                responsable_guardia='Sistema',
+                observaciones=f'Auto-inicializado {fecha_objetivo}'
+            )
+            db.session.add(nuevo_stock)
+        except Exception:
+            continue
+    
+    db.session.commit()
 
 def inicializar_ambos_turnos_fecha(fecha_objetivo):
     """Inicializar AMBOS turnos (día y noche) para una fecha específica"""
@@ -1101,9 +1143,11 @@ def nueva_salida():
             if not explosivos_data:
                 return jsonify({'error': 'Debe seleccionar al menos un explosivo'}), 400
             
-            
             # OPTIMIZACIÓN 1: Obtener todos los IDs de explosivos de una vez y convertir a int
-            explosivos_ids = [int(item['explosivo_id']) for item in explosivos_data]
+            try:
+                explosivos_ids = [int(item['explosivo_id']) for item in explosivos_data]
+            except (KeyError, ValueError) as e:
+                return jsonify({'error': f'Error en formato de explosivos: {str(e)}'}), 400
             
             # OPTIMIZACIÓN 2: Obtener todos los stocks en lote usando vista
             stocks_lote = {}
@@ -1118,17 +1162,18 @@ def nueva_salida():
                     placeholders = ','.join([f':id_{i}' for i in range(len(explosivos_ids))])
                     
                     # USAR v_stock_actual que es la vista correcta
-                    result = db.session.execute(text(f"""
+                    query_sql = f"""
                         SELECT 
                             id as explosivo_id, 
                             stock_actual
                         FROM v_stock_actual
                         WHERE id IN ({placeholders})
-                    """), params).fetchall()
+                    """
+                    
+                    result = db.session.execute(text(query_sql), params).fetchall()
                     
                     for row in result:
                         stocks_lote[row.explosivo_id] = float(row.stock_actual)
-                    
                     
                 except Exception as e:
                     pass
@@ -1136,11 +1181,15 @@ def nueva_salida():
             # Fallback: calcular stocks individualmente solo si la vista falló
             if not stocks_lote:
                 for explosivo_id in explosivos_ids:
-                    stocks_lote[explosivo_id] = calcular_stock_explosivo_original(explosivo_id)
+                    stock = calcular_stock_explosivo_original(explosivo_id)
+                    stocks_lote[explosivo_id] = stock
             
             # OPTIMIZACIÓN 3: Inicializar stock diario si no existe
             # Usar la guardia seleccionada por el usuario, no la actual del sistema
-            inicializar_stock_fecha_si_necesario(fecha_salida.date(), guardia)
+            try:
+                inicializar_stock_fecha_si_necesario(fecha_salida.date(), guardia, explosivos_ids)
+            except Exception as e:
+                return jsonify({'error': f'Error inicializando stock diario: {str(e)}'}), 500
             
             # OPTIMIZACIÓN 4: Obtener todos los stock_diario necesarios en una consulta
             stocks_diario_lote = {}
@@ -1158,7 +1207,6 @@ def nueva_salida():
                 
                 for sd in stocks_diario_query:
                     stocks_diario_lote[sd.explosivo_id] = sd
-                
                 
             except Exception as e:
                 return jsonify({'error': 'Error consultando stock diario'}), 500
@@ -1212,7 +1260,7 @@ def nueva_salida():
                             'tipo_actividad': tipo_actividad,
                             'cantidad': salida['cantidad'],
                             'fecha_salida': fecha_salida,
-                            'guardia': turno.lower(),
+                            'guardia': guardia,
                             'responsable': responsable,
                             'autorizado_por': autorizado_por,
                             'observaciones': observaciones
@@ -1449,7 +1497,7 @@ def nueva_devolucion():
                         'cantidad_devuelta': cantidad,
                         'motivo': motivo_devolucion,
                         'fecha_devolucion': fecha_devolucion,
-                        'guardia': turno,
+                        'guardia': guardia,
                         'responsable': supervisor_responsable,
                         'recibido_por': recibido_por,
                         'labor': labor_origen,
@@ -1465,7 +1513,7 @@ def nueva_devolucion():
                     
                     # 🔄 SINCRONIZACIÓN AUTOMÁTICA
                     try:
-                        trigger_sincronizacion_stock('devolucion', explosivo.id, fecha_devolucion.date(), turno)
+                        trigger_sincronizacion_stock('devolucion', explosivo.id, fecha_devolucion.date(), guardia)
                     except Exception as sync_error:
                         print(f"⚠️ Error sincronización automática: {sync_error}")
                     
@@ -1636,7 +1684,7 @@ def nuevo_ingreso():
                     'numero_vale': numero_vale,
                     'cantidad': cantidad,
                     'fecha_ingreso': fecha_ingreso,
-                    'guardia': turno.lower(),  # Usar el turno seleccionado
+                    'guardia': guardia,
                     'recibido_por': recibido_por,
                     'observaciones': observaciones
                 })
@@ -4061,8 +4109,8 @@ def inicializar_turnos_hoy():
 
 if __name__ == '__main__':
     with app.app_context():
-        # Crear tablas si no existen
-        db.create_all()
+        # Comentado temporalmente para debugging
+        # db.create_all()
         # Crear usuario administrador inicial
         crear_usuario_admin_inicial()
     
